@@ -25,13 +25,19 @@ import java.util.Map;
 public class WebClientViewpointClient implements ViewpointClient {
 
     private final WebClient viewpointWebClient;
+    private final com.example.chat.config.DownstreamProperties downstreamProperties;
 
-    public WebClientViewpointClient(WebClient viewpointWebClient) {
+    public WebClientViewpointClient(WebClient viewpointWebClient, com.example.chat.config.DownstreamProperties downstreamProperties) {
         this.viewpointWebClient = viewpointWebClient;
+        this.downstreamProperties = downstreamProperties;
     }
 
     @Override
     public Mono<String> checkViewpoint(String question, String answer, String sessionId, String userId) {
+        String baseUrl = downstreamProperties.viewpoint().baseUrl();
+        boolean isMock = baseUrl.contains("localhost:8080");
+        String path = isMock ? "/v1/viewpoint" : "/ai/run_workflow";
+
         Map<String, Object> inputs = new HashMap<>();
         inputs.put("userQuery", question);
         inputs.put("ab1Reply", answer);
@@ -44,7 +50,7 @@ public class WebClientViewpointClient implements ViewpointClient {
         body.put("responseMode", "blocking");
 
         return viewpointWebClient.post()
-                .uri("/v1/viewpoint")
+                .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()

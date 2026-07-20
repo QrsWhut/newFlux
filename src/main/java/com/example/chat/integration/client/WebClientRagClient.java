@@ -25,15 +25,21 @@ import java.time.Duration;
 public class WebClientRagClient implements RagClient {
 
     private final WebClient ragWebClient;
+    private final com.example.chat.config.DownstreamProperties downstreamProperties;
 
-    public WebClientRagClient(WebClient ragWebClient) {
+    public WebClientRagClient(WebClient ragWebClient, com.example.chat.config.DownstreamProperties downstreamProperties) {
         this.ragWebClient = ragWebClient;
+        this.downstreamProperties = downstreamProperties;
     }
 
     @Override
     public Mono<String> retrieve(RagRequest request) {
+        String baseUrl = downstreamProperties.rag().baseUrl();
+        boolean isMock = baseUrl.contains("localhost:8080");
+        String path = isMock ? "/v1/rag/retrieve" : "/ai/rag_analysis";
+
         return ragWebClient.post()
-                .uri("/v1/rag/retrieve")
+                .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()

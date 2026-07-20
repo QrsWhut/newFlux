@@ -21,15 +21,21 @@ import java.time.Duration;
 public class WebClientDpuClient implements DpuClient {
 
     private final WebClient dpuWebClient;
+    private final com.example.chat.config.DownstreamProperties downstreamProperties;
 
-    public WebClientDpuClient(WebClient dpuWebClient) {
+    public WebClientDpuClient(WebClient dpuWebClient, com.example.chat.config.DownstreamProperties downstreamProperties) {
         this.dpuWebClient = dpuWebClient;
+        this.downstreamProperties = downstreamProperties;
     }
 
     @Override
     public Mono<String> query(DpuRequest request) {
+        String baseUrl = downstreamProperties.dpu().baseUrl();
+        boolean isMock = baseUrl.contains("localhost:8080");
+        String path = isMock ? "/v1/dpu/query" : "/ai/dpu_analysis";
+
         return dpuWebClient.post()
-                .uri("/v1/dpu/query")
+                .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()

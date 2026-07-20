@@ -26,19 +26,25 @@ import java.util.Map;
 public class WebClientNerClient implements NerClient {
 
     private final WebClient nerWebClient;
+    private final com.example.chat.config.DownstreamProperties downstreamProperties;
 
-    public WebClientNerClient(WebClient nerWebClient) {
+    public WebClientNerClient(WebClient nerWebClient, com.example.chat.config.DownstreamProperties downstreamProperties) {
         this.nerWebClient = nerWebClient;
+        this.downstreamProperties = downstreamProperties;
     }
 
     @Override
     public Mono<String> extractEntities(String text, String sessionId) {
+        String baseUrl = downstreamProperties.ner().baseUrl();
+        boolean isMock = baseUrl.contains("localhost:8080");
+        String path = isMock ? "/v1/ner" : "/ai/process_text";
+
         Map<String, Object> body = new HashMap<>();
         body.put("text", text);
         body.put("outType", "tuple");
 
         return nerWebClient.post()
-                .uri("/v1/ner")
+                .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("session-id", sessionId)
                 .bodyValue(body)
