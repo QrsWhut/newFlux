@@ -661,6 +661,14 @@
     </main>
 
     <script>
+        // 全局捕获任何运行时报错以红框弹窗警告
+        window.addEventListener('error', function(e) {
+            showError("前端 JS 运行时异常: " + e.message + " (" + e.filename + ":" + e.lineno + ")");
+        });
+        window.addEventListener('unhandledrejection', function(e) {
+            showError("前端 Promise 异步异常: " + e.reason);
+        });
+
         let isRunning = false;
         let currentReader = null;
         let currentXhr = null;
@@ -773,21 +781,40 @@
                     seenBytes = rawText.length;
 
                     sseBuffer += chunk;
-                    const lines = sseBuffer.split("\n");
-                    sseBuffer = lines.pop();
+                    
+                    // 先以双换行分割为一个完整的 SSE 数据包
+                    const packets = sseBuffer.split("\n\n");
+                    // 最后一包可能不完整，放回 buffer
+                    sseBuffer = packets.pop();
 
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (trimmed === "") continue;
-                        if (trimmed.startsWith("event:")) {
-                            currentEvent = trimmed.slice(6).trim();
-                        } else if (trimmed.startsWith("data:")) {
-                            const dataStr = trimmed.slice(5).trim();
+                    for (const packet of packets) {
+                        const trimmedPacket = packet.trim();
+                        if (trimmedPacket === "") continue;
+
+                        const lines = trimmedPacket.split("\n");
+                        let dataBuffer = "";
+
+                        for (const line of lines) {
+                            const trimmedLine = line.trim();
+                            if (trimmedLine === "") continue;
+
+                            if (trimmedLine.startsWith("event:")) {
+                                currentEvent = trimmedLine.slice(6).trim();
+                            } else if (trimmedLine.startsWith("data:")) {
+                                dataBuffer += trimmedLine.slice(5).trim();
+                            } else {
+                                // 没有 data: 前缀的非空行，代表是被换行截断的 JSON 延续内容
+                                dataBuffer += trimmedLine;
+                            }
+                        }
+
+                        if (dataBuffer !== "") {
                             try {
-                                const eventObj = JSON.parse(dataStr);
+                                const eventObj = JSON.parse(dataBuffer);
                                 handleChatEvent(currentEvent, eventObj);
                             } catch (e) {
-                                console.error("解析流字节错", e);
+                                console.error("解析流数据 JSON 失败, data=" + dataBuffer, e);
+                                showError("流 JSON 解析失败：" + e.message + " (数据包长度：" + dataBuffer.length + ")");
                             }
                         }
                     }
