@@ -36,25 +36,23 @@ public class WebClientViewpointClient implements ViewpointClient {
     public Mono<String> checkViewpoint(String question, String answer, String sessionId, String userId) {
         String baseUrl = downstreamProperties.viewpoint().baseUrl();
         boolean isMock = baseUrl.contains("localhost:8080");
-        String path = isMock ? "/v1/viewpoint" : "/ai/run_workflow";
+        String path = isMock ? "/v1/viewpoint" : "/agentweb/v1/workflows/run";
 
         Map<String, Object> inputs = new HashMap<>();
         inputs.put("userQuery", question);
         inputs.put("ab1Reply", answer);
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("strAppCode", "94b0df59-e3a8-4971-899e-6917d0f167f3");
-        body.put("jsonParamObject", inputs);
-        body.put("sessionid", sessionId);
-        body.put("userid", userId);
-        body.put("responseMode", "blocking");
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("inputs", inputs);
+        payload.put("response_mode", "blocking");
+        payload.put("user", (userId != null && !userId.isEmpty()) ? userId : "user-test-rsqu");
 
         return viewpointWebClient.post()
                 .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("wind.sessionid", sessionId)
-                .header("no-session", "1")
-                .bodyValue(body)
+                .header("AppCode", "94b0df59-e3a8-4971-899e-6917d0f167f3")
+                .bodyValue(payload)
                 .retrieve()
                 .onStatus(org.springframework.http.HttpStatusCode::isError, response -> {
                     log.error("观点校验接口 HTTP 状态错误码: {}", response.statusCode());

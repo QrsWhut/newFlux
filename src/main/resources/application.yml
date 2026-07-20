@@ -17,22 +17,22 @@ downstream:
     connect-timeout: 2s
     response-timeout: 60s
   rag:
-    base-url: http://localhost:8113 # RAG检索服务，走datashareservice真实服务
+    base-url: http://180.96.8.44/wstock_share # RAG检索服务，直连主站公网中转
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 10s
   dpu:
-    base-url: http://localhost:8113 # DPU行情数据服务，走datashareservice真实服务
+    base-url: http://180.96.8.44/wstock_share # DPU行情数据服务，直连主站公网中转
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 10s
   ner:
-    base-url: http://localhost:8113 # NER实体识别服务，走datashareservice真实服务
+    base-url: http://10.102.16.20 # NER实体识别服务，直连局域网实体微服务
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 10s
   viewpoint:
-    base-url: http://localhost:8113 # 观点校验服务，走datashareservice真实服务
+    base-url: http://wx.wind.com.cn # 观点校验服务，直连局域网工作流引擎
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 30s

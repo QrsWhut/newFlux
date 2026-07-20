@@ -38,8 +38,7 @@ public class WebClientDpuClient implements DpuClient {
                 .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("wind.sessionid", request.sessionId() != null ? request.sessionId() : "")
-                .header("no-session", "1")
-                .bodyValue(request)
+                .bodyValue(request.question())
                 .retrieve()
                 .onStatus(org.springframework.http.HttpStatusCode::isError, response -> {
                     log.error("DPU 行情接口 HTTP 状态错误码: {}", response.statusCode());

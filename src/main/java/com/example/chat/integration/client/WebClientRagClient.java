@@ -42,7 +42,6 @@ public class WebClientRagClient implements RagClient {
                 .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("wind.sessionid", request.sessionId() != null ? request.sessionId() : "")
-                .header("no-session", "1")
                 .bodyValue(request)
                 .retrieve()
                 .onStatus(org.springframework.http.HttpStatusCode::isError, response -> {

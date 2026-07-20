@@ -37,18 +37,20 @@ public class WebClientNerClient implements NerClient {
     public Mono<String> extractEntities(String text, String sessionId) {
         String baseUrl = downstreamProperties.ner().baseUrl();
         boolean isMock = baseUrl.contains("localhost:8080");
-        String path = isMock ? "/v1/ner" : "/ai/process_text";
+        String path = isMock ? "/v1/ner" : "/jwindSearchWebProxy/ip/windIpNer";
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("text", text);
-        body.put("outType", "tuple");
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("sessionID", sessionId);
+        Map<String, Object> innerBody = new HashMap<>();
+        innerBody.put("text", text);
+        innerBody.put("outType", "tuple");
+        payload.put("body", innerBody);
 
         return nerWebClient.post()
                 .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("wind.sessionid", sessionId)
-                .header("no-session", "1")
-                .bodyValue(body)
+                .bodyValue(payload)
                 .retrieve()
                 .onStatus(org.springframework.http.HttpStatusCode::isError, response -> {
                     log.error("NER 实体识别接口 HTTP 状态错误码: {}", response.statusCode());
