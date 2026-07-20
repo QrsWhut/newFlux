@@ -798,6 +798,11 @@
                             const trimmedLine = line.trim();
                             if (trimmedLine === "") continue;
 
+                            // 过滤忽略 SSE 中的 id 标识及注释/心跳行（以 : 开头）
+                            if (trimmedLine.startsWith("id:") || trimmedLine.startsWith(":")) {
+                                continue;
+                            }
+
                             if (trimmedLine.startsWith("event:")) {
                                 currentEvent = trimmedLine.slice(6).trim();
                             } else if (trimmedLine.startsWith("data:")) {
