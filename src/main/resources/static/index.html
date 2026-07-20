@@ -776,7 +776,7 @@
                 let currentEvent = "";
 
                 currentXhr.onprogress = function() {
-                    const rawText = currentXhr.responseText;
+                    const rawText = this.responseText;
                     const chunk = rawText.substring(seenBytes);
                     seenBytes = rawText.length;
 
@@ -826,10 +826,10 @@
                 };
 
                 currentXhr.onload = function() {
-                    if (currentXhr.status >= 200 && currentXhr.status < 300) {
+                    if (this.status >= 200 && this.status < 300) {
                         // 正常终结
                     } else {
-                        showError("对话流运行中断：HTTP 状态异常 " + currentXhr.status);
+                        showError("对话流运行中断：HTTP 状态异常 " + this.status);
                     }
                     completeChatFlow();
                 };
