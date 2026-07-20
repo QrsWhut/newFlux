@@ -47,6 +47,7 @@ public class WebClientNerClient implements NerClient {
                 .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("wind.sessionid", sessionId)
+                .header("no-session", "1")
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(org.springframework.http.HttpStatusCode::isError, response -> {
