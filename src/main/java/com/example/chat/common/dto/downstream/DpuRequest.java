@@ -5,10 +5,12 @@ package com.example.chat.common.dto.downstream;
  *
  * @param question     改写后的增强问句
  * @param useAiService 是否启用智能分析服务
+ * @param sessionId    当前会话 ID
  * @author Antigravity
  * @since 2026-07-17
  */
 public record DpuRequest(
         String question,
-        boolean useAiService) {
+        boolean useAiService,
+        String sessionId) {
 }

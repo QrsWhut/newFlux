@@ -68,7 +68,7 @@ public class EnrichmentStage {
                 });
 
         // 2. DPU 行情检索
-        Mono<String> dpuMono = dpuClient.query(new DpuRequest(context.getRewrittenQuestion(), true))
+        Mono<String> dpuMono = dpuClient.query(new DpuRequest(context.getRewrittenQuestion(), true, context.sessionId()))
                 .doOnNext(dpu -> context.setDpuData(dpu))
                 .onErrorResume(ex -> {
                     if (ex instanceof com.example.chat.common.exception.DownstreamException dex && dex.isDegraded()) {

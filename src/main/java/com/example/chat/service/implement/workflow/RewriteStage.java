@@ -61,7 +61,8 @@ public class RewriteStage {
                 messages,
                 context.userId(),
                 "IntentNew",
-                "2.0"
+                "2.0",
+                context.sessionId()
         );
 
         log.info("开始执行问句改写阶段, taskId={}", context.taskId());

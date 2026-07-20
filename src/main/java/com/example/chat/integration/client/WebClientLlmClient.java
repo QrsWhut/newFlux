@@ -60,8 +60,8 @@ public class WebClientLlmClient implements LlmClient {
             }
             payload.put("promptParams", params);
 
-            // 无论哪种真实网关地址，本地开发联调均强制使用主站测试 Session 以防 401 Unauthorized 鉴权失败
-            String targetSessionId = "59fb454663864fa2b16a3a6ab4f21d75";
+            // 使用页面传入的真实 sessionId 进行下游鉴权认证
+            String targetSessionId = sessionId;
 
             // 万得 AI 兼容网关真实路径
             String path = "/aigateway/compatible/v1/chat/completions";
