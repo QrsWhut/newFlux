@@ -775,17 +775,16 @@
                 let sseBuffer = "";
                 let currentEvent = "";
 
-                currentXhr.onprogress = function() {
-                    const rawText = this.responseText;
-                    const chunk = rawText.substring(seenBytes);
-                    seenBytes = rawText.length;
-
-                    sseBuffer += chunk;
+                function parsePackets(rawTextChunk, isLast) {
+                    sseBuffer += rawTextChunk;
+                    const normalized = sseBuffer.replace(/\r/g, "");
+                    const packets = normalized.split("\n\n");
                     
-                    // 先以双换行分割为一个完整的 SSE 数据包
-                    const packets = sseBuffer.split("\n\n");
-                    // 最后一包可能不完整，放回 buffer
-                    sseBuffer = packets.pop();
+                    if (isLast) {
+                        sseBuffer = "";
+                    } else {
+                        sseBuffer = packets.pop();
+                    }
 
                     for (const packet of packets) {
                         const trimmedPacket = packet.trim();
@@ -798,7 +797,6 @@
                             const trimmedLine = line.trim();
                             if (trimmedLine === "") continue;
 
-                            // 过滤忽略 SSE 中的 id 标识及注释/心跳行（以 : 开头）
                             if (trimmedLine.startsWith("id:") || trimmedLine.startsWith(":")) {
                                 continue;
                             }
@@ -808,7 +806,6 @@
                             } else if (trimmedLine.startsWith("data:")) {
                                 dataBuffer += trimmedLine.slice(5).trim();
                             } else {
-                                // 没有 data: 前缀的非空行，代表是被换行截断的 JSON 延续内容
                                 dataBuffer += trimmedLine;
                             }
                         }
@@ -825,7 +822,17 @@
                     }
                 };
 
+                currentXhr.onprogress = function() {
+                    const rawText = this.responseText;
+                    const chunk = rawText.substring(seenBytes);
+                    seenBytes = rawText.length;
+                    
+                    parsePackets(chunk, false);
+                };
+
                 currentXhr.onload = function() {
+                    parsePackets("", true);
+                    
                     if (this.status >= 200 && this.status < 300) {
                         // 正常终结
                     } else {
