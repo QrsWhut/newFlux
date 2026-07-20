@@ -81,9 +81,17 @@ public class WebClientLlmClient implements LlmClient {
                         DownstreamException.ErrorType type = isClient ? DownstreamException.ErrorType.HTTP_CLIENT_ERROR : DownstreamException.ErrorType.HTTP_SERVER_ERROR;
                         return Mono.error(new DownstreamException("LLM", response.statusCode().value(), type, false, false, "真实大模型流式接口异常"));
                     })
-                    .bodyToFlux(typeRef)
-                    .takeWhile(sse -> sse.data() != null && !"[DONE]".equals(sse.data().trim()))
-                    .map(sse -> parseChunk(sse.data()))
+                    .bodyToFlux(String.class)
+                    .flatMap(rawLine -> {
+                        if (rawLine == null) {
+                            return Flux.empty();
+                        }
+                        String[] lines = rawLine.split("\n");
+                        return Flux.fromArray(lines);
+                    })
+                    .filter(line -> org.springframework.util.StringUtils.hasText(line))
+                    .takeWhile(line -> !line.contains("[DONE]"))
+                    .map(this::parseRawLine)
                     .filter(chunk -> chunk != null && !chunk.text().isEmpty())
                     .timeout(Duration.ofSeconds(60))
                     .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
@@ -124,6 +132,39 @@ public class WebClientLlmClient implements LlmClient {
                     })
                     .doOnCancel(() -> log.info("大模型连接被客户端主动断开/取消，sessionId={}", maskSessionId(sessionId)));
         }
+    }
+
+    private LlmChunk parseRawLine(String line) {
+        if (line == null) {
+            return null;
+        }
+        String cleaned = line.trim();
+        if (cleaned.startsWith("data:data:")) {
+            cleaned = cleaned.substring("data:data:".length()).trim();
+        } else if (cleaned.startsWith("data:")) {
+            cleaned = cleaned.substring("data:".length()).trim();
+        }
+
+        if (!cleaned.startsWith("{") || !cleaned.endsWith("}")) {
+            return null;
+        }
+
+        try {
+            JSONObject json = JSON.parseObject(cleaned);
+            JSONArray choices = json.getJSONArray("choices");
+            if (choices != null && !choices.isEmpty()) {
+                JSONObject firstChoice = choices.getJSONObject(0);
+                JSONObject delta = firstChoice.getJSONObject("delta");
+                if (delta != null) {
+                    String content = delta.containsKey("content") ? delta.getString("content") : "";
+                    String reasoningContent = delta.containsKey("reasoning_content") ? delta.getString("reasoning_content") : "";
+                    return new LlmChunk(content, reasoningContent);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("LlmClient: 解析大模型原始行流 JSON 失败: {}, 原始行: {}", e.getMessage(), line);
+        }
+        return null;
     }
 
     private LlmChunk parseChunk(String data) {
