@@ -765,6 +765,7 @@
 
                 let seenBytes = 0;
                 let sseBuffer = "";
+                let currentEvent = "";
 
                 currentXhr.onprogress = function() {
                     const rawText = currentXhr.responseText;
@@ -775,7 +776,6 @@
                     const lines = sseBuffer.split("\n");
                     sseBuffer = lines.pop();
 
-                    let currentEvent = "";
                     for (const line of lines) {
                         const trimmed = line.trim();
                         if (trimmed === "") continue;
