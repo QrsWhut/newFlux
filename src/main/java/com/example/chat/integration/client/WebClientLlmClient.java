@@ -71,7 +71,7 @@ public class WebClientLlmClient implements LlmClient {
             return llmWebClient.post()
                     .uri(path)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .header("Accept", "*/*")
+                    .header("Accept", "text/event-stream")
                     .header("wind.sessionid", targetSessionId)
                     .header("Authorization", "Bearer ODFCMTI1NDVENUNGNjE1RDc1OTdEMzIyNjhCREFBNEE=")
                     .bodyValue(payload)
@@ -82,10 +82,18 @@ public class WebClientLlmClient implements LlmClient {
                         DownstreamException.ErrorType type = isClient ? DownstreamException.ErrorType.HTTP_CLIENT_ERROR : DownstreamException.ErrorType.HTTP_SERVER_ERROR;
                         return Mono.error(new DownstreamException("LLM", response.statusCode().value(), type, false, false, "真实大模型流式接口异常"));
                     })
-                    .bodyToFlux(typeRef)
-                    .takeWhile(sse -> sse.data() != null && !"[DONE]".equals(sse.data().trim()))
-                    .<LlmChunk>handle((sse, sink) -> {
-                        LlmChunk chunk = parseSseData(sse.data());
+                    .bodyToFlux(String.class)
+                    .flatMap(rawLine -> {
+                        if (rawLine == null) {
+                            return Flux.empty();
+                        }
+                        String[] lines = rawLine.split("\n");
+                        return Flux.fromArray(lines);
+                    })
+                    .filter(line -> org.springframework.util.StringUtils.hasText(line))
+                    .takeWhile(line -> !line.contains("[DONE]"))
+                    .<LlmChunk>handle((line, sink) -> {
+                        LlmChunk chunk = parseRawLine(line);
                         if (chunk != null && !chunk.text().isEmpty()) {
                             sink.next(chunk);
                         }
@@ -131,18 +139,19 @@ public class WebClientLlmClient implements LlmClient {
         }
     }
 
-    private LlmChunk parseSseData(String data) {
-        if (data == null || data.isEmpty()) {
+    private LlmChunk parseRawLine(String line) {
+        if (line == null || line.isEmpty()) {
             return null;
         }
-        String cleaned = data.trim();
-        // 兼容由于 "data:data:" 导致 sse.data() 内部依旧留有第二个 "data:" 前缀的情况
-        if (cleaned.startsWith("data:")) {
+        String cleaned = line.trim();
+        if (cleaned.startsWith("data:data:")) {
+            cleaned = cleaned.substring("data:data:".length()).trim();
+        } else if (cleaned.startsWith("data:")) {
             cleaned = cleaned.substring("data:".length()).trim();
         }
 
         if (!cleaned.startsWith("{") || !cleaned.endsWith("}")) {
-            log.info("LlmClient: 忽略非 JSON SSE 数据: {}", data);
+            log.info("LlmClient: 忽略非 JSON 数据行: {}", line);
             return null;
         }
 
@@ -155,12 +164,12 @@ public class WebClientLlmClient implements LlmClient {
                 if (delta != null) {
                     String content = delta.containsKey("content") ? delta.getString("content") : "";
                     String reasoningContent = delta.containsKey("reasoning_content") ? delta.getString("reasoning_content") : "";
-                    log.info("LlmClient: 成功解析 SSE 切片, content='{}', reasoning='{}'", content, reasoningContent);
+                    log.info("LlmClient: 成功解析切片, content='{}', reasoning='{}'", content, reasoningContent);
                     return new LlmChunk(content, reasoningContent);
                 }
             }
         } catch (Exception e) {
-            log.warn("LlmClient: 解析大模型 SSE JSON 失败: {}, 原始数据: {}", e.getMessage(), data);
+            log.warn("LlmClient: 解析大模型原始行流 JSON 失败: {}, 原始行: {}", e.getMessage(), line);
         }
         return null;
     }
