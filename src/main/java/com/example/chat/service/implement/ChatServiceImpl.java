@@ -76,26 +76,24 @@ public class ChatServiceImpl implements ChatService {
                     .flatMapMany(dataset -> {
                         context.setDatasetContent(dataset);
 
-                        // 声明 Enrichment 为并发多路复用流。通过 share() 实现多路物理订阅共享与物理取消透传。
-                        Mono<EnrichmentResult> cachedEnrichMono = enrichmentStage.execute(context)
-                                .share();
+                        // 1. 声明并发冷富化流。仅在此处 triggerEnrichFlow 订阅一次拉起计算。
+                        Mono<EnrichmentResult> enrichMono = enrichmentStage.execute(context);
 
-                        // 首段回答大模型流
+                        // 2. 首段回答大模型流
                         Flux<ChatEvent> firstAnswerFlow = firstAnswerStage.execute(context);
 
-                        // 仅用于在首轮被订阅时，并行拉起 Enrichment 检索计算的“哑流”（不输出任何事件，零时序干扰）
-                        Flux<ChatEvent> triggerEnrichFlow = cachedEnrichMono.thenMany(Flux.empty());
+                        // 3. 哑流：订阅并拉起富化冷流 (只被订阅一次)，计算结果在 doOnNext 中写入 context
+                        Flux<ChatEvent> triggerEnrichFlow = enrichMono.thenMany(Flux.empty());
 
-                        // 合并大模型与富化哑流。此时首段大模型、RAG、DPU 完全并发启动！
+                        // 4. 并发拉起：大模型吐 Token 与 RAG/DPU 并发进行
                         Flux<ChatEvent> mergedFirstStep = Flux.merge(firstAnswerFlow, triggerEnrichFlow);
 
-                        // 串行对齐输出：
-                        // 首段 Token 输出完毕后，按 RAG -> DPU 固定物理顺序下发渲染卡片事件
-                        Flux<ChatEvent> emitEnrichFlow = cachedEnrichMono.flatMapMany(result -> {
+                        // 5. 串行卡片下发：合并流 complete 后，直接从 context 读取数据以固定物理顺序下发卡片事件
+                        Flux<ChatEvent> emitEnrichFlow = Flux.defer(() -> {
                             ChatEvent ragCard = ChatEvent.ui(context.taskId(), context.nextSequence(), 
-                                    new UiNode("rag-card", "ragData", Map.of("data", result.ragData()), 1L));
+                                    new UiNode("rag-card", "ragData", Map.of("data", context.getRagData() != null ? context.getRagData() : ""), 1L));
                             ChatEvent dpuCard = ChatEvent.ui(context.taskId(), context.nextSequence(), 
-                                    new UiNode("dpu-card", "dpuData", Map.of("data", result.dpuData()), 1L));
+                                    new UiNode("dpu-card", "dpuData", Map.of("data", context.getDpuData() != null ? context.getDpuData() : ""), 1L));
                             return Flux.just(ragCard, dpuCard);
                         });
 

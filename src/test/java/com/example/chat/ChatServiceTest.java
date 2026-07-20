@@ -137,6 +137,10 @@ public class ChatServiceTest {
                 // 5. 完成
                 .expectNextMatches(event -> event.type() == ChatEventType.COMPLETE)
                 .verifyComplete();
+
+        // 验证 RAG 和 DPU 物理上仅被拉取了一次，验证无多路复用重复请求
+        Mockito.verify(ragClient, Mockito.times(1)).retrieve(any());
+        Mockito.verify(dpuClient, Mockito.times(1)).query(any());
     }
 
     @Test
@@ -192,6 +196,10 @@ public class ChatServiceTest {
                 // 完成
                 .expectNextMatches(event -> event.type() == ChatEventType.COMPLETE)
                 .verifyComplete();
+
+        // 验证进入二轮时，首轮富化的 RAG 与 DPU 物理上仅被拉取了一次
+        Mockito.verify(ragClient, Mockito.times(1)).retrieve(any());
+        Mockito.verify(dpuClient, Mockito.times(1)).query(any());
     }
 
     @Test
