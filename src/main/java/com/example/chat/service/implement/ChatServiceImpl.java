@@ -76,16 +76,8 @@ public class ChatServiceImpl implements ChatService {
                     .flatMapMany(dataset -> {
                         context.setDatasetContent(dataset);
 
-                        // 声明 Enrichment 为缓存热源。在 flatMapMany 被订阅时，它作为热源可以提前并发启动。
-                        // 在业务层进行精细降级容灾，只对明确可降级的 DownstreamException 实施降级空结果，其余异常和取消直接抛出。
+                        // 声明 Enrichment 为并发多路复用流。通过 share() 实现多路物理订阅共享与物理取消透传。
                         Mono<EnrichmentResult> cachedEnrichMono = enrichmentStage.execute(context)
-                                .onErrorResume(ex -> {
-                                    if (ex instanceof com.example.chat.common.exception.DownstreamException dex && dex.isDegraded()) {
-                                        log.warn("并行富化（RAG/DPU）执行失败，触发降级, error={}", dex.getMessage());
-                                        return Mono.just(new EnrichmentResult("", ""));
-                                    }
-                                    return Mono.error(ex);
-                                })
                                 .share();
 
                         // 首段回答大模型流
@@ -133,6 +125,11 @@ public class ChatServiceImpl implements ChatService {
                     }))
                     .concatWith(Flux.defer(() -> Flux.just(ChatEvent.complete(context.taskId(), context.nextSequence()))))
                     .onErrorResume(err -> {
+                        // 遇到客户端取消或下游取消的异常，直接打印 info 日志并静默结束，不再下发 500 错误事件
+                        if (err instanceof com.example.chat.common.exception.DownstreamException dex && dex.getErrorType() == com.example.chat.common.exception.DownstreamException.ErrorType.CANCELLED) {
+                            log.info("AB1 对话流收到取消信号 (CANCELLED) 终止, taskId={}", context.taskId());
+                            return Flux.empty();
+                        }
                         log.error("AB1 对话流编排链路发生严重异常, taskId={}, error={}", 
                                 context.taskId(), err.getMessage(), err);
                         // 主链路大模型发生异常时直接向前端发出 error 事件并熔断终止流，保证异常与完成信号互斥

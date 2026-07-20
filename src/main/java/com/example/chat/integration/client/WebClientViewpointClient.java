@@ -59,8 +59,12 @@ public class WebClientViewpointClient implements ViewpointClient {
                 .timeout(Duration.ofSeconds(30))
                 .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
                         new DownstreamException("VIEWPOINT", 504, DownstreamException.ErrorType.RESPONSE_TIMEOUT, true, true, "观点校验请求响应超时", ex))
-                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> 
-                        new DownstreamException("VIEWPOINT", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "观点校验接口未知错误", ex));
+                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> {
+                    if (ex instanceof java.util.concurrent.CancellationException) {
+                        return new DownstreamException("VIEWPOINT", 499, DownstreamException.ErrorType.CANCELLED, false, true, "观点校验被取消", ex);
+                    }
+                    return new DownstreamException("VIEWPOINT", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "观点校验接口未知错误", ex);
+                });
     }
 
     private String parseViewpoint(String response) {
@@ -94,8 +98,9 @@ public class WebClientViewpointClient implements ViewpointClient {
                     return "True".equalsIgnoreCase(result.trim()) ? "1" : "0";
                 }
             }
-        } catch (Exception e) {
-            log.warn("解析观点可生成校验接口 JSON 响应异常。原始数据: {}, 异常: {}", response, e.getMessage());
+        } catch (com.alibaba.fastjson.JSONException e) {
+            log.error("解析观点可生成校验接口 JSON 响应异常。原始数据: {}, 异常: {}", response, e.getMessage());
+            throw new DownstreamException("VIEWPOINT", 200, DownstreamException.ErrorType.PARSE_ERROR, false, true, "解析观点校验 JSON 异常", e);
         }
         return "0";
     }

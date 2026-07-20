@@ -54,8 +54,12 @@ public class WebClientNerClient implements NerClient {
                 .timeout(Duration.ofSeconds(10))
                 .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
                         new DownstreamException("NER", 504, DownstreamException.ErrorType.RESPONSE_TIMEOUT, true, true, "NER 请求响应超时", ex))
-                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> 
-                        new DownstreamException("NER", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "NER 接口未知错误", ex));
+                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> {
+                    if (ex instanceof java.util.concurrent.CancellationException) {
+                        return new DownstreamException("NER", 499, DownstreamException.ErrorType.CANCELLED, false, true, "NER 调用被取消", ex);
+                    }
+                    return new DownstreamException("NER", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "NER 接口未知错误", ex);
+                });
     }
 
     private String parseNer(String response) {
@@ -71,8 +75,9 @@ public class WebClientNerClient implements NerClient {
                     return data.toJSONString();
                 }
             }
-        } catch (Exception e) {
-            log.warn("解析 NER 返回的实体数据异常，返回空数组。原始响应: {}, 异常: {}", response, e.getMessage());
+        } catch (com.alibaba.fastjson.JSONException e) {
+            log.error("解析 NER 返回的实体数据异常, 异常: {}", e.getMessage());
+            throw new DownstreamException("NER", 200, DownstreamException.ErrorType.PARSE_ERROR, false, true, "解析 NER JSON 异常", e);
         }
         return "[]";
     }

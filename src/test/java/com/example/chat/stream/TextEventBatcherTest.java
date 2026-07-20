@@ -10,6 +10,7 @@ import reactor.test.StepVerifier;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -209,5 +210,30 @@ public class TextEventBatcherTest {
         .expectNextMatches(event -> "B".equals(((ChatEvent.TextDelta) event.payload()).content()))
         .expectNextMatches(event -> "C".equals(((ChatEvent.TextDelta) event.payload()).content()))
         .verifyComplete();
+    }
+
+    // 11. 完整交替序列状态机边界语义锁定测试 (P2-1)
+    @Test
+    public void testCompleteSequenceBatching() {
+        Flux<ChatEvent> source = Flux.just(
+                ChatEvent.text("task-11", 1L, "A", "contentFirst"),
+                ChatEvent.text("task-11", 2L, "B", "contentFirst"),
+                ChatEvent.status("task-11", 3L, "S1"),
+                ChatEvent.text("task-11", 4L, "C", "contentFirst"),
+                ChatEvent.ui("task-11", 5L, new com.example.chat.common.dto.UiNode("card-11", "card", Map.of(), 1L)),
+                ChatEvent.text("task-11", 6L, "D", "contentFirst"),
+                ChatEvent.complete("task-11", 7L)
+        );
+
+        Flux<ChatEvent> batched = TextEventBatcher.batch(source);
+
+        StepVerifier.create(batched)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA && "AB".equals(((ChatEvent.TextDelta) event.payload()).content()))
+                .expectNextMatches(event -> event.type() == ChatEventType.STATUS && "S1".equals(((ChatEvent.StatusPayload) event.payload()).message()))
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA && "C".equals(((ChatEvent.TextDelta) event.payload()).content()))
+                .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "card-11".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA && "D".equals(((ChatEvent.TextDelta) event.payload()).content()))
+                .expectNextMatches(event -> event.terminal()) // COMPLETE
+                .verifyComplete();
     }
 }

@@ -306,8 +306,10 @@ public class ChatServiceTest {
         context.setRewrittenQuestion("改写提问");
         context.setDatasetContent("数据集");
 
-        // 1. 订阅 enrichMono 触发 RAG 数据返回并初始化 context 里的 askMono (share)
-        enrichmentStage.execute(context).subscribe();
+        // 1. 订阅 enrichMono 触发 RAG 数据返回并初始化 context 里的 askMono
+        StepVerifier.create(enrichmentStage.execute(context))
+                .expectNextCount(1)
+                .verifyComplete();
 
         // 2. 此时 context 里的 askMono 已初始化。直接调用并订阅 followupStage.execute 物理链条
         Flux<ChatEvent> followupFlow = followupStage.execute(context);
@@ -324,6 +326,103 @@ public class ChatServiceTest {
         // 验证追问只被调用了一次
         Mockito.verify(llmClient, Mockito.times(1))
                 .stream(Mockito.argThat(req -> req != null && "P052186".equals(req.promptId())), anyString());
+    }
+
+    @Test
+    public void testEnrichmentIsolation_RagSuccessDpuFailure() {
+        setupBaseMocks();
+        Mockito.when(ragClient.retrieve(any())).thenReturn(Mono.just("[\"RAG_SUCCESS\"]"));
+        // DPU 发生可降级的故障
+        Mockito.when(dpuClient.query(any())).thenReturn(Mono.error(
+                new DownstreamException("DPU", 500, DownstreamException.ErrorType.HTTP_SERVER_ERROR, false, true, "DPU崩了")
+        ));
+
+        com.example.chat.common.dto.ChatContext context = com.example.chat.common.dto.ChatContext.create(
+                new ChatRequest("task-isolation-1", "sess-1", "user-1", "提问", new ArrayList<>(), Map.of())
+        );
+        context.setRewrittenQuestion("改写提问");
+
+        StepVerifier.create(enrichmentStage.execute(context))
+                .expectNextMatches(res -> "[\"RAG_SUCCESS\"]".equals(res.ragData()) && "".equals(res.dpuData()))
+                .verifyComplete();
+    }
+
+    @Test
+    public void testEnrichmentIsolation_DpuSuccessRagFailure() {
+        setupBaseMocks();
+        Mockito.when(dpuClient.query(any())).thenReturn(Mono.just("DPU_SUCCESS"));
+        // RAG 发生可降级的故障
+        Mockito.when(ragClient.retrieve(any())).thenReturn(Mono.error(
+                new DownstreamException("RAG", 500, DownstreamException.ErrorType.HTTP_SERVER_ERROR, false, true, "RAG崩了")
+        ));
+
+        com.example.chat.common.dto.ChatContext context = com.example.chat.common.dto.ChatContext.create(
+                new ChatRequest("task-isolation-2", "sess-2", "user-2", "提问", new ArrayList<>(), Map.of())
+        );
+        context.setRewrittenQuestion("改写提问");
+
+        StepVerifier.create(enrichmentStage.execute(context))
+                .expectNextMatches(res -> "".equals(res.ragData()) && "DPU_SUCCESS".equals(res.dpuData()))
+                .verifyComplete();
+    }
+
+    @Test
+    public void testEnrichmentIsolation_BothFailure() {
+        setupBaseMocks();
+        Mockito.when(ragClient.retrieve(any())).thenReturn(Mono.error(
+                new DownstreamException("RAG", 500, DownstreamException.ErrorType.HTTP_SERVER_ERROR, false, true, "RAG崩了")
+        ));
+        Mockito.when(dpuClient.query(any())).thenReturn(Mono.error(
+                new DownstreamException("DPU", 500, DownstreamException.ErrorType.HTTP_SERVER_ERROR, false, true, "DPU崩了")
+        ));
+
+        com.example.chat.common.dto.ChatContext context = com.example.chat.common.dto.ChatContext.create(
+                new ChatRequest("task-isolation-3", "sess-3", "user-3", "提问", new ArrayList<>(), Map.of())
+        );
+        context.setRewrittenQuestion("改写提问");
+
+        StepVerifier.create(enrichmentStage.execute(context))
+                .expectNextMatches(res -> "".equals(res.ragData()) && "".equals(res.dpuData()))
+                .verifyComplete();
+    }
+
+    @Test
+    public void testEnrichmentIsolation_CancellationNoFallback() {
+        setupBaseMocks();
+        // RAG 返回取消信号（ degraded=false, CANCELLED ）
+        Mockito.when(ragClient.retrieve(any())).thenReturn(Mono.error(
+                new DownstreamException("RAG", 499, DownstreamException.ErrorType.CANCELLED, false, false, "取消了")
+        ));
+        Mockito.when(dpuClient.query(any())).thenReturn(Mono.just("DPU_SUCCESS"));
+
+        com.example.chat.common.dto.ChatContext context = com.example.chat.common.dto.ChatContext.create(
+                new ChatRequest("task-isolation-4", "sess-4", "user-4", "提问", new ArrayList<>(), Map.of())
+        );
+        context.setRewrittenQuestion("改写提问");
+
+        // 验证取消信号（不可降级）继续向外传播，不被转换成空字符串
+        StepVerifier.create(enrichmentStage.execute(context))
+                .expectErrorMatches(ex -> ex instanceof DownstreamException dex && dex.getErrorType() == DownstreamException.ErrorType.CANCELLED)
+                .verify();
+    }
+
+    @Test
+    public void testStateMutualExclusion_LlmErrorNoComplete() {
+        setupBaseMocks();
+        Mockito.when(ragClient.retrieve(any())).thenReturn(Mono.just("RAG_OK"));
+        Mockito.when(dpuClient.query(any())).thenReturn(Mono.just("DPU_OK"));
+        // LLM 返回严重错误而熔断
+        Mockito.when(llmClient.stream(Mockito.argThat(req -> req != null && !"P052186".equals(req.promptId())), anyString()))
+                .thenReturn(Flux.error(new RuntimeException("LLM崩了")));
+
+        ChatRequest request = new ChatRequest("task-ex-1", "sess-ex-1", "user-ex-1", "提问", new ArrayList<>(), Map.of());
+        Flux<ChatEvent> res = chatService.stream(request);
+
+        // 期待只输出一个 ERROR 事件，且无任何 COMPLETE 事件
+        StepVerifier.create(res)
+                .expectNextMatches(event -> event.type() == ChatEventType.ERROR)
+                .expectComplete()
+                .verify();
     }
 
     private void setupBaseMocks() {

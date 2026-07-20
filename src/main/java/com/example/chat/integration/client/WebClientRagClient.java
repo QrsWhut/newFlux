@@ -48,8 +48,12 @@ public class WebClientRagClient implements RagClient {
                 .timeout(Duration.ofSeconds(10))
                 .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
                         new DownstreamException("RAG", 504, DownstreamException.ErrorType.RESPONSE_TIMEOUT, true, true, "RAG 请求响应超时", ex))
-                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> 
-                        new DownstreamException("RAG", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "RAG 接口未知错误", ex));
+                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> {
+                    if (ex instanceof java.util.concurrent.CancellationException) {
+                        return new DownstreamException("RAG", 499, DownstreamException.ErrorType.CANCELLED, false, true, "RAG 调用被取消", ex);
+                    }
+                    return new DownstreamException("RAG", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "RAG 接口未知错误", ex);
+                });
     }
 
     private String extractRagData(String response) {
@@ -75,9 +79,9 @@ public class WebClientRagClient implements RagClient {
                 }
             }
             return filteredArray.toJSONString();
-        } catch (Exception e) {
-            log.warn("解析 RAG 原始响应 JSON 失败，原始响应={}, 错误: {}", response, e.getMessage());
-            return "";
+        } catch (com.alibaba.fastjson.JSONException e) {
+            log.error("解析 RAG 原始响应 JSON 失败，错误: {}", e.getMessage());
+            throw new DownstreamException("RAG", 200, DownstreamException.ErrorType.PARSE_ERROR, false, true, "解析 RAG JSON 异常", e);
         }
     }
 }

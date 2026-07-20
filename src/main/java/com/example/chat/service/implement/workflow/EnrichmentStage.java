@@ -46,21 +46,37 @@ public class EnrichmentStage {
     public Mono<EnrichmentResult> execute(ChatContext context) {
         log.info("开始并发构建 RAG 与 DPU 富化数据源, taskId={}", context.taskId());
 
-        // 1. RAG 检索：并在返回后立即非阻塞地注册追问 Mono 热源
+        // 1. RAG 检索：并在返回后立即非阻塞地注册追问 Mono 并发热源
         Mono<String> ragMono = ragClient.retrieve(new RagRequest(context.getRewrittenQuestion(), context.sessionId(), 1, 5))
                 .doOnNext(rag -> {
                     context.setRagData(rag);
 
-                    // 构建追问 Mono 并在 context 中注册为 Cached 热源，等待后续阶段触发订阅
+                    // 构建追问 Mono 并在 context 中注册。
+                    // 使用 share() (即 publish().refCount()) 确保二轮并发与 Followup 订阅共享单个物理连接，
+                    // 并且在下游所有订阅者主动取消（refCount归零）时，物理取消信号能够向上传播断开底层 LLM 连接。
                     Mono<String> askMono = callGatewayAsk(context, context.getDatasetContent(), rag)
                             .doOnNext(ask -> context.setAskData(ask))
                             .share();
                     context.setAskMono(askMono);
+                })
+                .onErrorResume(ex -> {
+                    if (ex instanceof com.example.chat.common.exception.DownstreamException dex && dex.isDegraded()) {
+                        log.warn("RAG 检索失败，触发局部降级为空字符串, taskId={}, error={}", context.taskId(), dex.getMessage());
+                        return Mono.just("");
+                    }
+                    return Mono.error(ex);
                 });
 
         // 2. DPU 行情检索
         Mono<String> dpuMono = dpuClient.query(new DpuRequest(context.getRewrittenQuestion(), true))
-                .doOnNext(dpu -> context.setDpuData(dpu));
+                .doOnNext(dpu -> context.setDpuData(dpu))
+                .onErrorResume(ex -> {
+                    if (ex instanceof com.example.chat.common.exception.DownstreamException dex && dex.isDegraded()) {
+                        log.warn("DPU 行情检索失败，触发局部降级为空字符串, taskId={}, error={}", context.taskId(), dex.getMessage());
+                        return Mono.just("");
+                    }
+                    return Mono.error(ex);
+                });
 
         return Mono.zip(ragMono, dpuMono)
                 .map(tuple -> new EnrichmentResult(tuple.getT1(), tuple.getT2()));

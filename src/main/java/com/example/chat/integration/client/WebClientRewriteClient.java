@@ -48,8 +48,12 @@ public class WebClientRewriteClient implements RewriteClient {
                 .timeout(Duration.ofSeconds(10))
                 .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
                         new DownstreamException("REWRITE", 504, DownstreamException.ErrorType.RESPONSE_TIMEOUT, true, true, "问句改写请求响应超时", ex))
-                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> 
-                        new DownstreamException("REWRITE", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "问句改写接口未知错误", ex));
+                .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> {
+                    if (ex instanceof java.util.concurrent.CancellationException) {
+                        return new DownstreamException("REWRITE", 499, DownstreamException.ErrorType.CANCELLED, false, true, "改写调用被取消", ex);
+                    }
+                    return new DownstreamException("REWRITE", 500, DownstreamException.ErrorType.UNKNOWN, false, true, "问句改写接口未知错误", ex);
+                });
     }
 
     private String parseRewrite(String response) {
@@ -72,8 +76,9 @@ public class WebClientRewriteClient implements RewriteClient {
                     }
                 }
             }
-        } catch (Exception e) {
-            log.warn("解析改写接口返回 JSON 异常，返回空，原始响应数据={}", response, e);
+        } catch (com.alibaba.fastjson.JSONException e) {
+            log.error("解析改写接口返回 JSON 异常, 原始响应数据={}, 异常: {}", response, e.getMessage());
+            throw new DownstreamException("REWRITE", 200, DownstreamException.ErrorType.PARSE_ERROR, false, true, "解析改写 JSON 异常", e);
         }
         return "";
     }
