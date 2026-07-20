@@ -11,33 +11,33 @@ spring:
 # 下游微服务独立配置属性
 downstream:
   llm:
-    base-url: http://localhost:8113 # 大模型服务
+    base-url: http://localhost:8081 # 大模型服务，默认走本地模拟/测试网关
     max-connections: 300
     pending-acquire-max-count: 500
     connect-timeout: 2s
     response-timeout: 60s
   rag:
-    base-url: http://localhost:8113 # RAG检索服务
+    base-url: http://localhost:8081 # RAG检索服务
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 10s
   dpu:
-    base-url: http://localhost:8113 # DPU行情数据服务
+    base-url: http://localhost:8081 # DPU行情数据服务
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 10s
   ner:
-    base-url: http://localhost:8113 # NER实体识别服务
+    base-url: http://localhost:8081 # NER实体识别服务
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 10s
   viewpoint:
-    base-url: http://localhost:8113 # 观点校验服务
+    base-url: http://localhost:8081 # 观点校验服务
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 30s
   rewrite:
-    base-url: http://localhost:8113 # 改写服务
+    base-url: http://localhost:8081 # 改写服务
     max-connections: 100
     connect-timeout: 2s
     response-timeout: 10s
