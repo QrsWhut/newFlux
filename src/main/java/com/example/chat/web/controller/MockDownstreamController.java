@@ -28,7 +28,7 @@ public class MockDownstreamController {
     /**
      * 1. 问句改写 Mock
      */
-    @PostMapping("/rewrite/sentence")
+    @PostMapping("/rewrite")
     public Mono<?> rewrite(@RequestBody Map<String, Object> req) {
         log.info("Mock 下游: 问句改写收到请求: {}", req);
         String question = (String) req.get("question");
@@ -59,7 +59,7 @@ public class MockDownstreamController {
     /**
      * 3. RAG 检索 Mock
      */
-    @PostMapping("/rag/query")
+    @PostMapping("/rag/retrieve")
     public Mono<?> queryRag(@RequestBody Map<String, Object> req) {
         log.info("Mock 下游: RAG 检索收到请求: {}", req);
         String rewritten = "贵州茅台在高端白酒市场的统治力依然强劲，近三年净利润复合增长率达16.2%。渠道改革效果显著，直销比例突破45%，品牌护城河极深。";
@@ -127,7 +127,7 @@ public class MockDownstreamController {
     /**
      * 6. NER 实体识别 Mock
      */
-    @PostMapping("/ner/extract")
+    @PostMapping("/ner")
     public Mono<?> extractNer(@RequestBody Map<String, Object> req) {
         log.info("Mock 下游: NER 收到请求: {}", req);
         Map<String, Object> response = Map.of(
@@ -144,7 +144,7 @@ public class MockDownstreamController {
     /**
      * 7. Viewpoint 观点可生成校验 Mock
      */
-    @PostMapping("/viewpoint/check")
+    @PostMapping("/viewpoint")
     public Mono<?> checkViewpoint(@RequestBody Map<String, Object> req) {
         log.info("Mock 下游: Viewpoint 收到请求: {}", req);
         Map<String, Object> response = Map.of(

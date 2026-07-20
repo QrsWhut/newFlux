@@ -546,7 +546,9 @@
                     <div class="message-bubble">
                         <pre>欢迎使用 newFlux 金融对话流调试终端！
 在下方输入框中输入问句，即可实时启动响应式工作流（首轮 LLM、RAG、DPU、次轮 LLM、NER 实体、观点生成、追问卡片等）的编排调度。
-右侧面板可实时捕获并展示各个后端组件的输入与输出数据参数，方便调试与追踪性能指标。</pre>
+右侧面板可实时捕获并展示各个后端组件的输入与输出数据参数。
+
+💡 【已为您自动固定今日调试会话 Session ID: 3f209d8efe4145a88a6fbc3114353e95】</pre>
                     </div>
                 </div>
             </div>
@@ -556,7 +558,7 @@
                 <div class="config-row">
                     <div class="config-item">
                         <label for="cfg-session">Session ID (对话会话)</label>
-                        <input type="text" id="cfg-session" value="sess-debug-999">
+                        <input type="text" id="cfg-session" value="3f209d8efe4145a88a6fbc3114353e95">
                     </div>
                     <div class="config-item">
                         <label for="cfg-user">User ID (用户标识)</label>
@@ -658,9 +660,9 @@
         </section>
     </main>
 
-    <script>
         let isRunning = false;
         let currentReader = null;
+        let currentXhr = null;
         let currentTaskId = "";
         let requestStartTime = 0;
         
@@ -756,29 +758,21 @@
             requestStartTime = performance.now();
 
             try {
-                const response = await fetch('/api/chat/stream', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
+                currentXhr = new XMLHttpRequest();
+                currentXhr.open('POST', '/api/chat/stream', true);
+                currentXhr.setRequestHeader('Content-Type', 'application/json');
 
-                if (!response.ok) {
-                    throw new Error("HTTP 状态异常：" + response.status);
-                }
+                let seenBytes = 0;
+                let sseBuffer = "";
 
-                currentReader = response.body.getReader();
-                const decoder = new TextDecoder("utf-8");
-                let buffer = "";
+                currentXhr.onprogress = function() {
+                    const rawText = currentXhr.responseText;
+                    const chunk = rawText.substring(seenBytes);
+                    seenBytes = rawText.length;
 
-                while (true) {
-                    const { value, done } = await currentReader.read();
-                    if (done) break;
-                    
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop(); // 最后一块可能不完整，放回buffer
+                    sseBuffer += chunk;
+                    const lines = sseBuffer.split("\n");
+                    sseBuffer = lines.pop();
 
                     let currentEvent = "";
                     for (const line of lines) {
@@ -796,10 +790,25 @@
                             }
                         }
                     }
-                }
+                };
+
+                currentXhr.onload = function() {
+                    if (currentXhr.status >= 200 && currentXhr.status < 300) {
+                        // 正常终结
+                    } else {
+                        showError("对话流运行中断：HTTP 状态异常 " + currentXhr.status);
+                    }
+                    completeChatFlow();
+                };
+
+                currentXhr.onerror = function() {
+                    showError("对话流运行中断：网络请求发生异常");
+                    completeChatFlow();
+                };
+
+                currentXhr.send(JSON.stringify(payload));
             } catch (err) {
                 showError("对话流运行中断：" + err.message);
-            } finally {
                 completeChatFlow();
             }
         }
@@ -974,8 +983,8 @@
             } catch(e) {
                 console.error("取消API请求失败", e);
             }
-            if (currentReader) {
-                currentReader.cancel();
+            if (currentXhr) {
+                currentXhr.abort();
             }
             completeChatFlow();
         }
@@ -984,8 +993,8 @@
         function completeChatFlow() {
             isRunning = false;
             updateBtnState(false);
-            if (currentReader) {
-                currentReader = null;
+            if (currentXhr) {
+                currentXhr = null;
             }
             
             // 将未跑的 Active 组件状态改为未完成或成功
