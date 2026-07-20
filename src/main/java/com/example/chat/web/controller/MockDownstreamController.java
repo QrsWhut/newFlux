@@ -102,13 +102,27 @@ public class MockDownstreamController {
         // 5.2 常规模型回答 Mock (流式吐字)
         String[] tokens;
         if ("P053102".equals(req.promptId())) {
-            tokens = new String[]{
-                "根据您", "提问的", "基本面", "数据，分析", "结果如下：\n",
-                "1. 公司", "在过去三个", "财年的营业", "收入持续", "稳步上升；\n",
-                "2. 扣非", "净利润增速", "保持在双位数", "区间，符合", "蓝筹核心", "资产定位。\n",
-                "#end# 阿里"
-            };
-        } else {
+            // 提取提问关键词，进行个股动态 Mock 回答，提高调试体验
+            String question = "";
+            if (req.promptParams() != null && req.promptParams().get("question") != null) {
+                question = req.promptParams().get("question").toString();
+            }
+            String targetStock = "该标的";
+            if (question.contains("茅台") || question.contains("贵州茅台")) {
+                targetStock = "贵州茅台";
+            } else if (question.contains("阿里")) {
+                targetStock = "阿里巴巴";
+            } else if (question.contains("腾讯")) {
+                targetStock = "腾讯控股";
+            }
+ 
+             tokens = new String[]{
+                 "根据您", "提问的", "基本面", "数据，分析", "结果如下：\n",
+                 "1. " + targetStock, "在过去三个", "财年的营业", "收入持续", "稳步上升；\n",
+                 "2. 扣非", "净利润增速", "保持在双位数", "区间，符合", "蓝筹核心", "资产定位。\n",
+                 "#end# " + targetStock
+             };
+         } else {
             tokens = new String[]{
                 "这是第", "二轮深入", "诊断分析：\n",
                 "结合最新行情", "主力资金", "动向显示，该标的", "在年线上方", "整固充分，", "可积极关注", "量能释放。"
