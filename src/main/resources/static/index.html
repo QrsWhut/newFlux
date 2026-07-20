@@ -776,9 +776,11 @@
                 let currentEvent = "";
 
                 function parsePackets(rawTextChunk, isLast) {
+                    console.log("[流式解析] 收到新数据片大小: " + rawTextChunk.length + " 字节, 是否最后包: " + isLast);
                     sseBuffer += rawTextChunk;
                     const normalized = sseBuffer.replace(/\r/g, "");
                     const packets = normalized.split("\n\n");
+                    console.log("[流式解析] 当前可切分包数量: " + packets.length);
                     
                     if (isLast) {
                         sseBuffer = "";
@@ -812,6 +814,7 @@
 
                         if (dataBuffer !== "") {
                             try {
+                                console.log("[流式解析] 成功拼装完整包, 事件类型: " + currentEvent + ", 内容: " + dataBuffer);
                                 const eventObj = JSON.parse(dataBuffer);
                                 handleChatEvent(currentEvent, eventObj);
                             } catch (e) {
@@ -824,6 +827,7 @@
 
                 currentXhr.onprogress = function() {
                     const rawText = this.responseText;
+                    console.log("[XHR onprogress] 当前 responseText 总长度: " + rawText.length + " 字节");
                     const chunk = rawText.substring(seenBytes);
                     seenBytes = rawText.length;
                     
@@ -855,6 +859,7 @@
 
         // 处理 SSE 推送的事件
         function handleChatEvent(event, data) {
+            console.log("[handleChatEvent] 收到分发事件: " + event, data);
             const textContainer = document.getElementById("current-text-container");
             const cardsContainer = document.getElementById("current-cards-container");
             
