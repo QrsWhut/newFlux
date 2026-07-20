@@ -709,6 +709,14 @@
 
         // 发送对话
         async function startChat() {
+            // 归档并移除上一轮对话气泡的 ID 标识，以防新的一轮产生 ID 重复冲突
+            const oldText = document.getElementById("current-text-container");
+            if (oldText) oldText.removeAttribute("id");
+            const oldCards = document.getElementById("current-cards-container");
+            if (oldCards) oldCards.removeAttribute("id");
+            const oldBubble = document.getElementById("current-answer-bubble");
+            if (oldBubble) oldBubble.removeAttribute("id");
+
             const questionInput = document.getElementById("question-input");
             const question = questionInput.value.trim();
             if (!question) return;
@@ -937,6 +945,8 @@
             updateNodeState("dpu", obj.dpuData ? "success" : "failed", obj.dpuData ? "获取成功" : "已降级为空");
 
             // 首轮 LLM 标记成功
+            const textElement = document.getElementById("current-text-container");
+            debugDataStore.llm1.output = textElement ? textElement.innerText : "未捕获到吐字内容";
             updateNodeState("llm1", "success", "吐字结束");
 
             // 5. 追问
