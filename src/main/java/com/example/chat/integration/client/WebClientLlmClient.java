@@ -71,6 +71,7 @@ public class WebClientLlmClient implements LlmClient {
             return llmWebClient.post()
                     .uri(path)
                     .contentType(MediaType.APPLICATION_JSON)
+                    .header("Accept", "*/*")
                     .header("wind.sessionid", targetSessionId)
                     .header("Authorization", "Bearer ODFCMTI1NDVENUNGNjE1RDc1OTdEMzIyNjhCREFBNEE=")
                     .bodyValue(payload)

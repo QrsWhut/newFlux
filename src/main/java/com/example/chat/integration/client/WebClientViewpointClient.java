@@ -50,6 +50,7 @@ public class WebClientViewpointClient implements ViewpointClient {
         return viewpointWebClient.post()
                 .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
+                .header("Accept", "*/*")
                 .header("wind.sessionid", sessionId)
                 .header("AppCode", "94b0df59-e3a8-4971-899e-6917d0f167f3")
                 .bodyValue(payload)
