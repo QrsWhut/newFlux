@@ -13,6 +13,7 @@ import com.example.chat.service.implement.workflow.FollowupStage;
 import com.example.chat.service.implement.workflow.RewriteStage;
 import com.example.chat.service.implement.workflow.SecondAnswerStage;
 import com.example.chat.stream.TextEventBatcher;
+import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -121,7 +122,17 @@ public class ChatServiceImpl implements ChatService {
 
                         return mergedSecondStep.concatWith(followupStage.execute(context));
                     }))
-                    .concatWith(Flux.defer(() -> Flux.just(ChatEvent.complete(context.taskId(), context.nextSequence()))))
+                    .concatWith(Flux.defer(() -> {
+                        Map<String, Object> debugInfo = Map.of(
+                            "rewrittenQuestion", context.getRewrittenQuestion() != null ? context.getRewrittenQuestion() : "",
+                            "datasetContent", context.getDatasetContent() != null ? context.getDatasetContent() : "",
+                            "ragData", context.getRagData() != null ? context.getRagData() : "",
+                            "dpuData", context.getDpuData() != null ? context.getDpuData() : "",
+                            "askData", context.getAskData() != null ? context.getAskData() : ""
+                        );
+                        ChatEvent debugEvent = ChatEvent.status(context.taskId(), context.nextSequence(), "DEBUG_DUMP:" + JSON.toJSONString(debugInfo));
+                        return Flux.just(debugEvent, ChatEvent.complete(context.taskId(), context.nextSequence()));
+                    }))
                     .onErrorResume(err -> {
                         // 遇到客户端取消或下游取消的异常，直接打印 info 日志并静默结束，不再下发 500 错误事件
                         if (err instanceof com.example.chat.common.exception.DownstreamException dex && dex.getErrorType() == com.example.chat.common.exception.DownstreamException.ErrorType.CANCELLED) {

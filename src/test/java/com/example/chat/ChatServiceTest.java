@@ -117,7 +117,9 @@ public class ChatServiceTest {
         ChatRequest request = new ChatRequest("test-task-1", "session-1", "user-1", "阿里巴巴战略?", history, attrs);
 
         // 执行流式调用，并使用 StepVerifier 校验事件顺序
-        Flux<ChatEvent> resultFlux = chatService.stream(request);
+        Flux<ChatEvent> resultFlux = chatService.stream(request)
+                .filter(event -> !(event.type() == ChatEventType.STATUS && 
+                        ((ChatEvent.StatusPayload) event.payload()).message().startsWith("DEBUG_DUMP:")));
 
         StepVerifier.create(resultFlux)
                 // 1. 首段连续文本会被 TextEventBatcher 拼接为一个事件下发 (包括换行符)
@@ -179,7 +181,9 @@ public class ChatServiceTest {
         ChatRequest request = new ChatRequest("test-task-2", "session-2", "user-2", "百度战略?", history, attrs);
 
         // 执行流式调用
-        Flux<ChatEvent> resultFlux = chatService.stream(request);
+        Flux<ChatEvent> resultFlux = chatService.stream(request)
+                .filter(event -> !(event.type() == ChatEventType.STATUS && 
+                        ((ChatEvent.StatusPayload) event.payload()).message().startsWith("DEBUG_DUMP:")));
 
         StepVerifier.create(resultFlux)
                 // 首段合并文本 (包含换行)
