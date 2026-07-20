@@ -41,7 +41,53 @@ public class WebClientLlmClientTest {
                 .baseUrl(mockWebServer.url("/").toString())
                 .build();
 
-        llmClient = new WebClientLlmClient(webClient);
+        com.example.chat.config.DownstreamProperties.ClientProperties clientProperties = 
+            new com.example.chat.config.DownstreamProperties.ClientProperties(
+                mockWebServer.url("/").toString(), 50, 100, Duration.ofSeconds(2), Duration.ofSeconds(10)
+            );
+        com.example.chat.config.DownstreamProperties properties = 
+            new com.example.chat.config.DownstreamProperties(
+                clientProperties, null, null, null, null, null
+            );
+
+        llmClient = new WebClientLlmClient(webClient, properties);
+    }
+
+    @Test
+    public void testRealLlmStream() {
+        WebClient webClient = WebClient.builder().build();
+        com.example.chat.config.DownstreamProperties.ClientProperties clientProperties = 
+            new com.example.chat.config.DownstreamProperties.ClientProperties(
+                "http://180.96.8.44/wstock_share", 50, 100, Duration.ofSeconds(5), Duration.ofSeconds(30)
+            );
+        com.example.chat.config.DownstreamProperties properties = 
+            new com.example.chat.config.DownstreamProperties(
+                clientProperties, null, null, null, null, null
+            );
+        WebClientLlmClient client = new WebClientLlmClient(webClient, properties);
+
+        java.util.Map<String, Object> params = new java.util.HashMap<>();
+        params.put("question", "你好");
+        params.put("currentDate", "20260720");
+        params.put("lstdpu", "");
+        params.put("pageData", "");
+        params.put("lstrag", "");
+        params.put("content", "");
+        LlmRequest request = new LlmRequest("P053102", true, params);
+        System.out.println(">>> 开始请求真实大模型流...");
+        
+        try {
+            client.stream(request, "3f209defe4145a88a6fbc3114353e95")
+                .doOnNext(chunk -> {
+                    System.out.print(chunk.text());
+                    System.out.flush();
+                })
+                .doOnError(err -> System.err.println("\n>>> 请求大模型发生异常: " + err.getMessage()))
+                .doOnComplete(() -> System.out.println("\n>>> 请求大模型完成。"))
+                .blockLast(Duration.ofSeconds(30));
+        } catch (Exception e) {
+            System.err.println("\n>>> 阻塞等待流完成异常: " + e.getMessage());
+        }
     }
 
     @AfterEach

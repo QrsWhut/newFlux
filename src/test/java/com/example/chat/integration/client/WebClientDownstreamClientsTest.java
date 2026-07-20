@@ -39,10 +39,19 @@ public class WebClientDownstreamClientsTest {
         String baseUrl = mockWebServer.url("/").toString();
         WebClient sharedWebClient = WebClient.builder().baseUrl(baseUrl).build();
 
+        com.example.chat.config.DownstreamProperties.ClientProperties clientProperties = 
+            new com.example.chat.config.DownstreamProperties.ClientProperties(
+                baseUrl, 50, 100, java.time.Duration.ofSeconds(2), java.time.Duration.ofSeconds(10)
+            );
+        com.example.chat.config.DownstreamProperties properties = 
+            new com.example.chat.config.DownstreamProperties(
+                null, clientProperties, clientProperties, null, null, null
+            );
+
         // 实例化三个客户端
         datasetClient = new WebClientDatasetClient(sharedWebClient);
-        ragClient = new WebClientRagClient(sharedWebClient);
-        dpuClient = new WebClientDpuClient(sharedWebClient);
+        ragClient = new WebClientRagClient(sharedWebClient, properties);
+        dpuClient = new WebClientDpuClient(sharedWebClient, properties);
     }
 
     @AfterEach
@@ -155,7 +164,7 @@ public class WebClientDownstreamClientsTest {
                 .setResponseCode(500)
                 .setBody("Error"));
 
-        Mono<String> res = dpuClient.query(new DpuRequest("行情", true));
+        Mono<String> res = dpuClient.query(new DpuRequest("行情", true, "sess-test"));
 
         StepVerifier.create(res)
                 .expectErrorSatisfies(throwable -> {

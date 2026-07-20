@@ -145,8 +145,7 @@ public class ChatServiceImpl implements ChatService {
                         return Flux.just(ChatEvent.error(context.taskId(), context.nextSequence(), "500", "AB1已停止回答。如有需要，请随时重新提问"));
                     });
 
-            // 文本批处理器保证时序与 50ms 实时刷新率
-            return TextEventBatcher.batch(mainPipeline);
+            return mainPipeline;
         });
     }
 }
