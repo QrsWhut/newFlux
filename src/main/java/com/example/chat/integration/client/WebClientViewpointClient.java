@@ -52,6 +52,7 @@ public class WebClientViewpointClient implements ViewpointClient {
         return viewpointWebClient.post()
                 .uri(path)
                 .contentType(MediaType.APPLICATION_JSON)
+                .header("wind.sessionid", "59fb454663864fa2b16a3a6ab4f21d75")
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(org.springframework.http.HttpStatusCode::isError, response -> {
