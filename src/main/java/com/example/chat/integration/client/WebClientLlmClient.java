@@ -68,46 +68,58 @@ public class WebClientLlmClient implements LlmClient {
 
             log.info("LlmClient: 正在向真实 AI 网关发起流式大模型请求, url={}, payload={}", baseUrl + path, payload);
 
-            return llmWebClient.post()
-                    .uri(path)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("Accept", "text/event-stream")
-                    .header("wind.sessionid", targetSessionId)
-                    .header("Authorization", "Bearer ODFCMTI1NDVENUNGNjE1RDc1OTdEMzIyNjhCREFBNEE=")
-                    .bodyValue(payload)
-                    .retrieve()
-                    .onStatus(HttpStatusCode::isError, response -> {
-                        log.error("真实大模型流接口 HTTP 状态错误码: {}, sessionId={}", response.statusCode(), maskSessionId(sessionId));
-                        boolean isClient = response.statusCode().is4xxClientError();
-                        DownstreamException.ErrorType type = isClient ? DownstreamException.ErrorType.HTTP_CLIENT_ERROR : DownstreamException.ErrorType.HTTP_SERVER_ERROR;
-                        return Mono.error(new DownstreamException("LLM", response.statusCode().value(), type, false, false, "真实大模型流式接口异常"));
-                    })
-                    .bodyToFlux(String.class)
-                    .flatMap(rawLine -> {
-                        if (rawLine == null) {
-                            return Flux.empty();
-                        }
-                        String[] lines = rawLine.split("\n");
-                        return Flux.fromArray(lines);
-                    })
-                    .filter(line -> org.springframework.util.StringUtils.hasText(line))
-                    .takeWhile(line -> !line.contains("[DONE]"))
-                    .<LlmChunk>handle((line, sink) -> {
-                        LlmChunk chunk = parseRawLine(line);
-                        if (chunk != null && !chunk.text().isEmpty()) {
-                            sink.next(chunk);
-                        }
-                    })
-                    .timeout(Duration.ofSeconds(60))
-                    .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
-                            new DownstreamException("LLM", 504, DownstreamException.ErrorType.RESPONSE_TIMEOUT, true, false, "真实大模型流请求响应超时", ex))
-                    .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> {
-                        if (ex instanceof java.util.concurrent.CancellationException) {
-                            return new DownstreamException("LLM", 499, DownstreamException.ErrorType.CANCELLED, false, false, "真实大模型流式调用被取消", ex);
-                        }
-                        return new DownstreamException("LLM", 500, DownstreamException.ErrorType.UNKNOWN, false, false, "真实大模型流接口未知错误", ex);
-                    })
-                    .doOnCancel(() -> log.info("大模型连接被客户端主动断开/取消，sessionId={}", maskSessionId(sessionId)));
+            return Flux.defer(() -> {
+                StringBuilder lineBuffer = new StringBuilder();
+                return llmWebClient.post()
+                        .uri(path)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Accept", "*/*")
+                        .header("wind.sessionid", targetSessionId)
+                        .header("Authorization", "Bearer ODFCMTI1NDVENUNGNjE1RDc1OTdEMzIyNjhCREFBNEE=")
+                        .bodyValue(payload)
+                        .retrieve()
+                        .onStatus(HttpStatusCode::isError, response -> {
+                            log.error("真实大模型流接口 HTTP 状态错误码: {}, sessionId={}", response.statusCode(), maskSessionId(sessionId));
+                            boolean isClient = response.statusCode().is4xxClientError();
+                            DownstreamException.ErrorType type = isClient ? DownstreamException.ErrorType.HTTP_CLIENT_ERROR : DownstreamException.ErrorType.HTTP_SERVER_ERROR;
+                            return Mono.error(new DownstreamException("LLM", response.statusCode().value(), type, false, false, "真实大模型流式接口异常"));
+                        })
+                        .bodyToFlux(org.springframework.core.io.buffer.DataBuffer.class)
+                        .flatMap(dataBuffer -> {
+                            byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                            dataBuffer.read(bytes);
+                            org.springframework.core.io.buffer.DataBufferUtils.release(dataBuffer);
+                            String chunkStr = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                            
+                            lineBuffer.append(chunkStr);
+                            java.util.List<String> lines = new java.util.ArrayList<>();
+                            int newlineIdx;
+                            while ((newlineIdx = lineBuffer.indexOf("\n")) != -1) {
+                                String line = lineBuffer.substring(0, newlineIdx);
+                                lines.add(line);
+                                lineBuffer.delete(0, newlineIdx + 1);
+                            }
+                            return Flux.fromIterable(lines);
+                        })
+                        .filter(line -> org.springframework.util.StringUtils.hasText(line))
+                        .takeWhile(line -> !line.contains("[DONE]"))
+                        .<LlmChunk>handle((line, sink) -> {
+                            LlmChunk chunk = parseRawLine(line);
+                            if (chunk != null && !chunk.text().isEmpty()) {
+                                sink.next(chunk);
+                            }
+                        })
+                        .timeout(Duration.ofSeconds(60))
+                        .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
+                                new DownstreamException("LLM", 504, DownstreamException.ErrorType.RESPONSE_TIMEOUT, true, false, "真实大模型流请求响应超时", ex))
+                        .onErrorMap(ex -> !(ex instanceof DownstreamException), ex -> {
+                            if (ex instanceof java.util.concurrent.CancellationException) {
+                                return new DownstreamException("LLM", 499, DownstreamException.ErrorType.CANCELLED, false, false, "真实大模型流式调用被取消", ex);
+                            }
+                            return new DownstreamException("LLM", 500, DownstreamException.ErrorType.UNKNOWN, false, false, "真实大模型流接口未知错误", ex);
+                        })
+                        .doOnCancel(() -> log.info("大模型连接被客户端主动断开/取消，sessionId={}", maskSessionId(sessionId)));
+            });
         } else {
             // 本地 Mock 请求逻辑
             return llmWebClient.post()
