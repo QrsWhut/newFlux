@@ -11,7 +11,7 @@ spring:
 # 下游微服务独立配置属性
 downstream:
   llm:
-    base-url: http://10.10.178.25:12239 # 大模型服务，直接调用局域网大模型兼容网关
+    base-url: http://180.96.8.44/wstock_share # 大模型服务，走主站公网测试网关
     max-connections: 300
     pending-acquire-max-count: 500
     connect-timeout: 2s

@@ -63,8 +63,8 @@ public class WebClientLlmClient implements LlmClient {
             // 使用页面传入的真实 sessionId 进行下游鉴权认证
             String targetSessionId = sessionId;
 
-            // 万得 AI 兼容网关真实路径
-            String path = "/aigateway/compatible/v1/chat/completions";
+            // 根据地址切换路径：公网测试网关走 /ai/gateway?type=2，局域网兼容网关走 /aigateway/compatible/v1/chat/completions
+            String path = baseUrl.contains("180.96.8.44") ? "/ai/gateway?type=2" : "/aigateway/compatible/v1/chat/completions";
 
             log.info("LlmClient: 正在向真实 AI 网关发起流式大模型请求, url={}, payload={}", baseUrl + path, payload);
 
