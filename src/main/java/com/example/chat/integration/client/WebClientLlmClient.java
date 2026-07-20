@@ -91,8 +91,12 @@ public class WebClientLlmClient implements LlmClient {
                     })
                     .filter(line -> org.springframework.util.StringUtils.hasText(line))
                     .takeWhile(line -> !line.contains("[DONE]"))
-                    .map(this::parseRawLine)
-                    .filter(chunk -> chunk != null && !chunk.text().isEmpty())
+                    .<LlmChunk>handle((line, sink) -> {
+                        LlmChunk chunk = parseRawLine(line);
+                        if (chunk != null && !chunk.text().isEmpty()) {
+                            sink.next(chunk);
+                        }
+                    })
                     .timeout(Duration.ofSeconds(60))
                     .onErrorMap(java.util.concurrent.TimeoutException.class, ex -> 
                             new DownstreamException("LLM", 504, DownstreamException.ErrorType.RESPONSE_TIMEOUT, true, false, "真实大模型流请求响应超时", ex))
