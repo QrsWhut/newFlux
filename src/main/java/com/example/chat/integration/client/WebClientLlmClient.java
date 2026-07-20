@@ -151,6 +151,7 @@ public class WebClientLlmClient implements LlmClient {
         }
 
         if (!cleaned.startsWith("{") || !cleaned.endsWith("}")) {
+            log.info("LlmClient: 忽略非 JSON 数据行: {}", line);
             return null;
         }
 
@@ -163,6 +164,7 @@ public class WebClientLlmClient implements LlmClient {
                 if (delta != null) {
                     String content = delta.containsKey("content") ? delta.getString("content") : "";
                     String reasoningContent = delta.containsKey("reasoning_content") ? delta.getString("reasoning_content") : "";
+                    log.info("LlmClient: 成功解析切片, content='{}', reasoning='{}'", content, reasoningContent);
                     return new LlmChunk(content, reasoningContent);
                 }
             }
