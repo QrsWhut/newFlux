@@ -110,10 +110,10 @@ public class WebClientLlmClient implements LlmClient {
                             }
                         })
                         .filter(line -> org.springframework.util.StringUtils.hasText(line))
-                        .takeWhile(line -> !line.contains("[DONE]"))
+                        .takeWhile(line -> !line.contains("[DONE]") && !line.contains("message_end"))
                         .<LlmChunk>handle((line, sink) -> {
                             LlmChunk chunk = parseRawLine(line);
-                            if (chunk != null && !chunk.text().isEmpty()) {
+                            if (chunk != null) {
                                 sink.next(chunk);
                             }
                         })
@@ -177,6 +177,8 @@ public class WebClientLlmClient implements LlmClient {
 
         try {
             JSONObject json = JSON.parseObject(cleaned);
+            
+            // 兼容格式一：Choices 格式 (choices[0].delta.content)
             JSONArray choices = json.getJSONArray("choices");
             if (choices != null && !choices.isEmpty()) {
                 JSONObject firstChoice = choices.getJSONObject(0);
@@ -184,9 +186,30 @@ public class WebClientLlmClient implements LlmClient {
                 if (delta != null) {
                     String content = delta.containsKey("content") ? delta.getString("content") : "";
                     String reasoningContent = delta.containsKey("reasoning_content") ? delta.getString("reasoning_content") : "";
-                    log.info("LlmClient: 成功解析切片, content='{}', reasoning='{}'", content, reasoningContent);
+                    log.info("LlmClient: 成功解析切片 (Choices格式), content='{}', reasoning='{}'", content, reasoningContent);
                     return new LlmChunk(content, reasoningContent);
                 }
+            }
+            
+            // 兼容格式二：Event/Answer 真实网关格式
+            if (json.containsKey("event")) {
+                String event = json.getString("event");
+                if ("message_end".equals(event)) {
+                    log.info("LlmClient: 收到网关流结束标志 message_end");
+                    return new LlmChunk("", "");
+                }
+                if ("message".equals(event) || "workflow_finished".equals(event)) {
+                    String answer = json.containsKey("answer") ? json.getString("answer") : "";
+                    log.info("LlmClient: 成功解析切片 (Event格式), answer='{}'", answer);
+                    return new LlmChunk(answer, "");
+                }
+            }
+            
+            // 兼容格式三：Text 格式
+            if (json.containsKey("text")) {
+                String text = json.getString("text");
+                log.info("LlmClient: 成功解析切片 (Text格式), text='{}'", text);
+                return new LlmChunk(text, "");
             }
         } catch (Exception e) {
             log.warn("LlmClient: 解析大模型原始行流 JSON 失败: {}, 原始行: {}", e.getMessage(), line);
