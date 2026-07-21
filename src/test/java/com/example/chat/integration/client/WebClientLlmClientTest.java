@@ -77,7 +77,7 @@ public class WebClientLlmClientTest {
         System.out.println(">>> 开始请求真实大模型流...");
         
         try {
-            client.stream(request, "3f209defe4145a88a6fbc3114353e95")
+            client.stream(request, "a81c129f504d4e0cb9b67324b941a423")
                 .doOnNext(chunk -> {
                     System.out.print(chunk.text());
                     System.out.flush();
