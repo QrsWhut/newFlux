@@ -69,6 +69,7 @@ public class WebClientLlmClient implements LlmClient {
             log.info("LlmClient: 正在向真实 AI 网关发起流式大模型请求, url={}, payload={}", baseUrl + path, payload);
 
             return Flux.defer(() -> {
+                StringBuilder lineBuffer = new StringBuilder();
                 return llmWebClient.post()
                         .uri(uriBuilder -> {
                             if (baseUrl.contains("180.96.8.44")) {
@@ -90,25 +91,22 @@ public class WebClientLlmClient implements LlmClient {
                             return Mono.error(new DownstreamException("LLM", response.statusCode().value(), type, false, false, "真实大模型流式接口异常"));
                         })
                         .bodyToFlux(org.springframework.core.io.buffer.DataBuffer.class)
-                        .handle(new java.util.function.BiConsumer<org.springframework.core.io.buffer.DataBuffer, reactor.core.publisher.SynchronousSink<String>>() {
-                            private final StringBuilder localLineBuffer = new StringBuilder();
-
-                            @Override
-                            public void accept(org.springframework.core.io.buffer.DataBuffer dataBuffer, reactor.core.publisher.SynchronousSink<String> sink) {
-                                try {
-                                    byte[] bytes = new byte[dataBuffer.readableByteCount()];
-                                    dataBuffer.read(bytes);
-                                    String chunkStr = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-                                    localLineBuffer.append(chunkStr);
-                                    int newlineIdx;
-                                    while ((newlineIdx = localLineBuffer.indexOf("\n")) != -1) {
-                                        String line = localLineBuffer.substring(0, newlineIdx);
-                                        sink.next(line);
-                                        localLineBuffer.delete(0, newlineIdx + 1);
-                                    }
-                                } finally {
-                                    org.springframework.core.io.buffer.DataBufferUtils.release(dataBuffer);
+                        .concatMap(dataBuffer -> {
+                            try {
+                                byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                                dataBuffer.read(bytes);
+                                String chunkStr = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                                lineBuffer.append(chunkStr);
+                                java.util.List<String> lines = new java.util.ArrayList<>();
+                                int newlineIdx;
+                                while ((newlineIdx = lineBuffer.indexOf("\n")) != -1) {
+                                    String line = lineBuffer.substring(0, newlineIdx);
+                                    lines.add(line);
+                                    lineBuffer.delete(0, newlineIdx + 1);
                                 }
+                                return Flux.fromIterable(lines);
+                            } finally {
+                                org.springframework.core.io.buffer.DataBufferUtils.release(dataBuffer);
                             }
                         })
                         .filter(line -> org.springframework.util.StringUtils.hasText(line))
