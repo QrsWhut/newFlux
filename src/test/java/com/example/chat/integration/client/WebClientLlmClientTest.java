@@ -67,7 +67,7 @@ public class WebClientLlmClientTest {
         WebClientLlmClient client = new WebClientLlmClient(webClient, properties);
 
         java.util.Map<String, Object> params = new java.util.HashMap<>();
-        params.put("question", "你好");
+        params.put("question", "hello");
         params.put("currentDate", "20260720");
         params.put("lstdpu", "");
         params.put("pageData", "");

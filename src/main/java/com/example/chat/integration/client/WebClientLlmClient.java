@@ -71,7 +71,13 @@ public class WebClientLlmClient implements LlmClient {
             return Flux.defer(() -> {
                 StringBuilder lineBuffer = new StringBuilder();
                 return llmWebClient.post()
-                        .uri(path)
+                        .uri(uriBuilder -> {
+                            if (baseUrl.contains("180.96.8.44")) {
+                                return uriBuilder.path("/ai/gateway").queryParam("type", "2").build();
+                            } else {
+                                return uriBuilder.path("/aigateway/compatible/v1/chat/completions").build();
+                            }
+                        })
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Accept", "*/*")
                         .header("wind.sessionid", targetSessionId)
