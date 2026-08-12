@@ -5,7 +5,9 @@ import com.example.chat.common.dto.ChatEvent;
 import com.example.chat.common.dto.ChatRequest;
 import com.example.chat.common.dto.EnrichmentResult;
 import com.example.chat.common.dto.UiNode;
+import com.example.chat.common.enums.ExecutionMode;
 import com.example.chat.integration.client.DatasetClient;
+import com.example.chat.service.interf.ChatExecutionService;
 import com.example.chat.service.interf.ChatService;
 import com.example.chat.service.implement.workflow.EnrichmentStage;
 import com.example.chat.service.implement.workflow.FirstAnswerStage;
@@ -32,7 +34,13 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-public class ChatServiceImpl implements ChatService {
+public class ChatServiceImpl implements ChatService, ChatExecutionService {
+
+    @Override
+    public ExecutionMode executionMode() {
+        return ExecutionMode.WORKFLOW;
+    }
+
 
     private final RewriteStage rewriteStage;
     private final FirstAnswerStage firstAnswerStage;

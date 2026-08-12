@@ -47,3 +47,12 @@ app:
   session:
     prod-session: "mock-prod-session-id"
   env: "test" # 当前运行环境，测试时可模拟本地
+
+# Agent 模式特性配置
+agent:
+  llm:
+    max-turns: 4
+    total-timeout: 60s
+    single-call-timeout: 10s
+    observation-max-chars: 4000
+

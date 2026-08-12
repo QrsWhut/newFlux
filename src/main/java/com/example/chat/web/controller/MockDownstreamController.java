@@ -178,4 +178,44 @@ public class MockDownstreamController {
         );
         return JSON.toJSONString(map);
     }
+
+    /**
+     * 8. Agent LLM /aigateway/compatible/v1/chat/completions 兼容接口 Mock
+     */
+    @PostMapping(value = "/aigateway/compatible/v1/chat/completions", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> agentChatCompletions(@RequestBody Map<String, Object> req) {
+        log.info("Mock 下游: Agent LLM 兼容接口收到请求: {}", req);
+        List<?> messages = (List<?>) req.get("messages");
+
+        boolean hasToolResult = false;
+        if (messages != null) {
+            for (Object msgObj : messages) {
+                if (msgObj instanceof Map<?, ?> msgMap && "tool".equals(msgMap.get("role"))) {
+                    hasToolResult = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasToolResult) {
+            String toolCallChunk = JSON.toJSONString(Map.of("choices", List.of(Map.of(
+                    "delta", Map.of("tool_calls", List.of(Map.of(
+                            "index", 0, "id", "call_mock_1", "type", "function",
+                            "function", Map.of("name", "queryFinancialData", "arguments", "{\"query\":\"贵州茅台\"}")
+                    ))),
+                    "finish_reason", "tool_calls"
+            ))));
+            return Flux.just(ServerSentEvent.builder(toolCallChunk).build());
+        } else {
+            String[] tokens = new String[]{"基于", "检索到的", "行情数据，", "贵州茅台", "当前基本面", "表现稳健。"};
+            return Flux.interval(Duration.ofMillis(50))
+                    .take(tokens.length)
+                    .map(idx -> {
+                        String data = JSON.toJSONString(Map.of("choices", List.of(Map.of("delta", Map.of("content", tokens[idx.intValue()])))));
+                        return ServerSentEvent.builder(data).build();
+                    })
+                    .concatWith(Flux.just(ServerSentEvent.builder("[DONE]").build()));
+        }
+    }
 }
+

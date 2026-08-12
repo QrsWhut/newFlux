@@ -21,7 +21,7 @@ import java.time.Duration;
  * @since 2026-07-17
  */
 @Configuration
-@EnableConfigurationProperties(DownstreamProperties.class)
+@EnableConfigurationProperties({DownstreamProperties.class, AgentProperties.class})
 public class WebClientConfig {
 
     private WebClient createIsolatedWebClient(String poolName, DownstreamProperties.ClientProperties props, String defaultAcceptHeader) {
@@ -78,4 +78,10 @@ public class WebClientConfig {
     public WebClient rewriteWebClient(DownstreamProperties properties) {
         return createIsolatedWebClient("rewrite-pool", properties.rewrite(), MediaType.APPLICATION_JSON_VALUE);
     }
+
+    @Bean
+    public com.example.chat.agent.client.AgentLlmClient agentLlmClient(WebClient llmWebClient, DownstreamProperties properties) {
+        return new com.example.chat.agent.client.WebClientAgentLlmClient(llmWebClient, properties);
+    }
 }
+

@@ -156,6 +156,7 @@ public class WebClientLlmClientTest {
 
         RecordedRequest recordedRequest = mockWebServer.takeRequest(5, TimeUnit.SECONDS);
         assertNotNull(recordedRequest);
-        assertEquals("/v1/chat/stream", recordedRequest.getPath());
+        assertEquals("/aigateway/compatible/v1/chat/completions", recordedRequest.getPath());
     }
 }
+

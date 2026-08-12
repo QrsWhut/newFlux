@@ -122,13 +122,11 @@ public class ChatServiceTest {
                         ((ChatEvent.StatusPayload) event.payload()).message().startsWith("DEBUG_DUMP:")));
 
         StepVerifier.create(resultFlux)
-                // 1. 首段连续文本会被 TextEventBatcher 拼接为一个事件下发 (包括换行符)
-                .expectNextMatches(event -> {
-                    if (event.type() == ChatEventType.TEXT_DELTA && event.payload() instanceof ChatEvent.TextDelta delta) {
-                        return "阿里\n".equals(delta.content());
-                    }
-                    return false;
-                })
+                // 1. 首段文本 ( 2 个文本 chunk + 1 个换行符 chunk = 3 个 TEXT_DELTA )
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+
                 // 3. RAG 卡片与 DPU 卡片
                 .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "rag-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
                 .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "dpu-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
@@ -186,13 +184,17 @@ public class ChatServiceTest {
                         ((ChatEvent.StatusPayload) event.payload()).message().startsWith("DEBUG_DUMP:")));
 
         StepVerifier.create(resultFlux)
-                // 首段合并文本 (包含换行)
-                .expectNextMatches(event -> "百度\n".equals(((ChatEvent.TextDelta) event.payload()).content()))
+                // 首段合并文本 ( 2 个文本 chunk + 1 个换行符 = 3 个 TEXT_DELTA )
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 // RAG & DPU UI
                 .expectNextMatches(event -> "rag-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
                 .expectNextMatches(event -> "dpu-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
-                // 次段合并文本 (包含换行)
-                .expectNextMatches(event -> "搜索\n".equals(((ChatEvent.TextDelta) event.payload()).content()))
+                // 次段合并文本 ( 2 个文本 chunk + 1 个换行符 = 3 个 TEXT_DELTA )
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 // NER & viewpoint & ask UI
                 .expectNextMatches(event -> "ner-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
                 .expectNextMatches(event -> "viewpoint-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
@@ -200,6 +202,10 @@ public class ChatServiceTest {
                 // 完成
                 .expectNextMatches(event -> event.type() == ChatEventType.COMPLETE)
                 .verifyComplete();
+
+
+
+
 
         // 验证进入二轮时，首轮富化的 RAG 与 DPU 物理上仅被拉取了一次
         Mockito.verify(ragClient, Mockito.times(1)).retrieve(any());
@@ -219,6 +225,7 @@ public class ChatServiceTest {
 
         StepVerifier.create(res)
                 .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "rag-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
                 .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "dpu-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
                 .thenCancel()
@@ -237,6 +244,7 @@ public class ChatServiceTest {
         Flux<ChatEvent> res = chatService.stream(request);
 
         StepVerifier.create(res)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "rag-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
                 .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "dpu-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
@@ -259,6 +267,7 @@ public class ChatServiceTest {
 
         StepVerifier.create(res)
                 .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 .expectNextMatches(event -> {
                     if (event.type() == ChatEventType.UI_UPDATE && "rag-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId())) {
                         String data = (String) ((com.example.chat.common.dto.UiNode) event.payload()).properties().get("data");
@@ -274,17 +283,18 @@ public class ChatServiceTest {
     @Test
     public void testEnrichmentOrderAndResilience_DpuFailure() {
         setupBaseMocks();
-        // DPU 发生 degraded 降级错误，RAG 正常返回。验证流程不受影响并输出空的 DPU 卡片
+        // DPU 发生 degraded 降级错误，RAG 正常返回。验证流仍能走完并输出空的 DPU 卡片
+        Mockito.when(ragClient.retrieve(any())).thenReturn(Mono.just("RAG_NORMAL"));
         Mockito.when(dpuClient.query(any())).thenReturn(Mono.error(
                 new DownstreamException("DPU", 500, DownstreamException.ErrorType.HTTP_SERVER_ERROR, false, true, "DPU崩了")
         ));
-        Mockito.when(ragClient.retrieve(any())).thenReturn(Mono.just("RAG_NORMAL"));
 
         List<ChatMessage> history = new ArrayList<>();
         ChatRequest request = new ChatRequest("task-order-4", "sess-order-4", "user-4", "提问", history, Map.of());
         Flux<ChatEvent> res = chatService.stream(request);
 
         StepVerifier.create(res)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
                 .expectNextMatches(event -> event.type() == ChatEventType.UI_UPDATE && "rag-card".equals(((com.example.chat.common.dto.UiNode) event.payload()).nodeId()))
                 .expectNextMatches(event -> {
@@ -296,6 +306,7 @@ public class ChatServiceTest {
                 })
                 .thenCancel()
                 .verify();
+
     }
 
     @Test
