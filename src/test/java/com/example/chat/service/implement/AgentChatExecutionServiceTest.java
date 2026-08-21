@@ -1,13 +1,20 @@
 package com.example.chat.service.implement;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.example.chat.agent.AgentLoop;
 import com.example.chat.agent.client.AgentLlmClient;
 import com.example.chat.agent.memory.ConversationMemoryService;
 import com.example.chat.agent.memory.ConversationSummaryService;
 import com.example.chat.agent.memory.InMemoryConversationMemoryRepository;
 import com.example.chat.agent.model.AgentModelResponse;
+import com.example.chat.agent.model.AgentMessage;
+import com.example.chat.agent.model.AgentToolCall;
 import com.example.chat.agent.prompt.AgentPromptFactory;
-import com.example.chat.agent.tool.AgentToolRegistry;
+import com.example.chat.agent.tool.AgentToolError;
+import com.example.chat.agent.tool.AgentToolErrorCode;
+import com.example.chat.agent.tool.AgentToolInvoker;
+import com.example.chat.agent.tool.AgentToolResult;
 import com.example.chat.common.dto.ChatRequest;
 import com.example.chat.common.enums.ChatEventType;
 import com.example.chat.common.enums.ExecutionMode;
@@ -20,6 +27,7 @@ import reactor.test.StepVerifier;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -33,6 +41,7 @@ public class AgentChatExecutionServiceTest {
 
     private ConversationMemoryService memoryService;
     private AgentLlmClient agentLlmClient;
+    private AgentToolInvoker toolInvoker;
     private AgentChatExecutionService executionService;
 
     @BeforeEach
@@ -40,11 +49,18 @@ public class AgentChatExecutionServiceTest {
         memoryService = new ConversationMemoryService(
                 new InMemoryConversationMemoryRepository(), new ConversationSummaryService());
         agentLlmClient = Mockito.mock(AgentLlmClient.class);
+        toolInvoker = Mockito.mock(AgentToolInvoker.class);
+        Mockito.when(toolInvoker.getAllowedDefinitions(Mockito.any()))
+                .thenReturn(Collections.emptyList());
+        Mockito.when(toolInvoker.call(Mockito.any(), Mockito.any(), Mockito.any()))
+                .thenReturn(reactor.core.publisher.Mono.just(AgentToolResult.failure(
+                        AgentToolError.of(AgentToolErrorCode.TOOL_NOT_FOUND,
+                                "未知工具", false))));
         AgentProperties agentProperties = new AgentProperties(new AgentProperties.LlmProperties(
                 4, Duration.ofSeconds(60), Duration.ofSeconds(10), 4000));
         AgentLoop agentLoop = new AgentLoop(
                 agentLlmClient,
-                new AgentToolRegistry(Collections.emptyList()),
+                toolInvoker,
                 agentProperties
         );
         executionService = new AgentChatExecutionService(
@@ -88,8 +104,53 @@ public class AgentChatExecutionServiceTest {
 
         StepVerifier.create(executionService.stream(request))
                 .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA
-                        && clarification.equals(((com.example.chat.common.dto.ChatEvent.TextDelta) event.payload()).content()))
+                        && clarification.equals(
+                                ((com.example.chat.common.dto.ChatEvent.TextDelta)
+                                        event.payload()).content()))
                 .expectNextMatches(event -> event.type() == ChatEventType.COMPLETE)
+                .verifyComplete();
+    }
+
+    @Test
+    public void testPersistOrderedToolConversationWithStatusOnly() {
+        AgentToolCall toolCall = AgentToolCall.builder()
+                .id("call-1")
+                .type("function")
+                .function(AgentToolCall.FunctionCall.builder()
+                        .name("queryFinancialData")
+                        .arguments(new JSONObject(
+                                java.util.Map.of("query", "贵州茅台")).toJSONString())
+                        .build())
+                .build();
+        Mockito.when(agentLlmClient.chat(Mockito.any(), Mockito.any(), Mockito.any()))
+                .thenReturn(Flux.just(AgentModelResponse.toolCalls(List.of(toolCall))))
+                .thenReturn(Flux.just(AgentModelResponse.textDelta("贵州茅台查询完成。")));
+        Mockito.when(toolInvoker.call(Mockito.any(), Mockito.any(), Mockito.any()))
+                .thenReturn(reactor.core.publisher.Mono.just(
+                        AgentToolResult.success("完整行情数据", null)));
+        ChatRequest request = new ChatRequest(
+                "task-tool", "session-tool", "user-tool", "查询贵州茅台",
+                Collections.emptyList(), Collections.emptyMap(), ExecutionMode.AGENT);
+
+        StepVerifier.create(executionService.stream(request))
+                .expectNextMatches(event -> event.type() == ChatEventType.STATUS)
+                .expectNextMatches(event -> event.type() == ChatEventType.TEXT_DELTA)
+                .expectNextMatches(event -> event.type() == ChatEventType.COMPLETE)
+                .verifyComplete();
+
+        StepVerifier.create(memoryService.getMemory("user-tool", "session-tool"))
+                .expectNextMatches(memory -> {
+                    List<AgentMessage> messages = memory.getRecentTurns().get(0).getMessages();
+                    return messages.size() == 4
+                            && "user".equals(messages.get(0).getRole())
+                            && "assistant".equals(messages.get(1).getRole())
+                            && messages.get(1).getToolCalls() != null
+                            && "tool".equals(messages.get(2).getRole())
+                            && "SUCCESS".equals(JSON.parseObject(
+                                    messages.get(2).getContent()).getString("status"))
+                            && "assistant".equals(messages.get(3).getRole())
+                            && "贵州茅台查询完成。".equals(messages.get(3).getContent());
+                })
                 .verifyComplete();
     }
 

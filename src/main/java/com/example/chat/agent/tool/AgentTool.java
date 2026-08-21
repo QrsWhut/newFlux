@@ -4,33 +4,39 @@ import com.example.chat.agent.model.AgentToolDefinition;
 import reactor.core.publisher.Mono;
 
 /**
- * Agent 统一工具接口
+ * Agent 统一工具接口。
  *
- * @author Antigravity
- * @since 2026-08-12
+ * @param <I> 工具强类型输入
  */
-public interface AgentTool {
+public interface AgentTool<I> {
 
     /**
-     * 工具名称，必须唯一且遵循 lowerCamelCase (如 searchFinancialDocuments)
+     * 获取工具完整定义，工具名称以该定义为唯一来源。
      *
-     * @return 工具名
-     */
-    String name();
-
-    /**
-     * 获取暴露给 LLM 的 Schema 定义
-     *
-     * @return AgentToolDefinition
+     * @return 工具定义
      */
     AgentToolDefinition definition();
 
     /**
-     * 执行工具（非阻塞 Reactor Mono）
+     * 获取工具输入类型。
      *
-     * @param argumentsJson 模型传入的参数 JSON 字符串
-     * @param sessionId     会话 ID
-     * @return 工具执行结果 Mono
+     * @return 工具输入类型
      */
-    Mono<AgentToolResult> execute(String argumentsJson, String sessionId);
+    Class<I> inputType();
+
+    /**
+     * 获取工具运行元数据。
+     *
+     * @return 工具运行元数据
+     */
+    AgentToolMetadata metadata();
+
+    /**
+     * 调用工具业务能力。
+     *
+     * @param input 已完成反序列化和校验的输入
+     * @param context 工具调用上下文
+     * @return 工具调用结果
+     */
+    Mono<AgentToolResult> call(I input, AgentToolContext context);
 }

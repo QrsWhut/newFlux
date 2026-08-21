@@ -20,6 +20,17 @@ import java.util.List;
 @AllArgsConstructor
 public class AgentMessage {
 
+    /** 开发者指令角色。 */
+    public static final String ROLE_DEVELOPER = "developer";
+    /** 系统指令角色。 */
+    public static final String ROLE_SYSTEM = "system";
+    /** 用户角色。 */
+    public static final String ROLE_USER = "user";
+    /** 助手角色。 */
+    public static final String ROLE_ASSISTANT = "assistant";
+    /** 工具结果角色。 */
+    public static final String ROLE_TOOL = "tool";
+
     /**
      * 角色: system, user, assistant, tool
      */
@@ -43,31 +54,66 @@ public class AgentMessage {
     private String toolCallId;
 
     /**
-     * 当 role=tool 时，工具名称
+     * 创建开发者指令消息。
+     *
+     * @param content 指令内容
+     * @return 开发者消息
      */
-    private String name;
+    public static AgentMessage developer(String content) {
+        return AgentMessage.builder().role(ROLE_DEVELOPER).content(content).build();
+    }
 
+    /**
+     * 创建系统指令消息。
+     *
+     * @param content 指令内容
+     * @return 系统消息
+     */
     public static AgentMessage system(String content) {
-        return AgentMessage.builder().role("system").content(content).build();
+        return AgentMessage.builder().role(ROLE_SYSTEM).content(content).build();
     }
 
+    /**
+     * 创建用户消息。
+     *
+     * @param content 用户内容
+     * @return 用户消息
+     */
     public static AgentMessage user(String content) {
-        return AgentMessage.builder().role("user").content(content).build();
+        return AgentMessage.builder().role(ROLE_USER).content(content).build();
     }
 
+    /**
+     * 创建助手文本消息。
+     *
+     * @param content 助手内容
+     * @return 助手消息
+     */
     public static AgentMessage assistant(String content) {
-        return AgentMessage.builder().role("assistant").content(content).build();
+        return AgentMessage.builder().role(ROLE_ASSISTANT).content(content).build();
     }
 
+    /**
+     * 创建助手工具调用消息。
+     *
+     * @param toolCalls 工具调用列表
+     * @return 助手工具调用消息
+     */
     public static AgentMessage assistantWithTools(List<AgentToolCall> toolCalls) {
-        return AgentMessage.builder().role("assistant").toolCalls(toolCalls).build();
+        return AgentMessage.builder().role(ROLE_ASSISTANT).toolCalls(toolCalls).build();
     }
 
-    public static AgentMessage tool(String toolCallId, String name, String result) {
+    /**
+     * 创建工具结果消息。
+     *
+     * @param toolCallId 关联的工具调用 ID
+     * @param result 工具结果
+     * @return 工具消息
+     */
+    public static AgentMessage tool(String toolCallId, String result) {
         return AgentMessage.builder()
-                .role("tool")
+                .role(ROLE_TOOL)
                 .toolCallId(toolCallId)
-                .name(name)
                 .content(result)
                 .build();
     }

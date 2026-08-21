@@ -61,8 +61,8 @@ public class InMemoryConversationMemoryRepository implements ConversationMemoryR
         if (orig.getRecentTurns() != null) {
             for (ConversationTurn turn : orig.getRecentTurns()) {
                 turnsCopy.add(ConversationTurn.builder()
-                        .userQuestion(turn.getUserQuestion())
-                        .assistantAnswer(turn.getAssistantAnswer())
+                        .messages(turn.getMessages() == null
+                                ? new ArrayList<>() : new ArrayList<>(turn.getMessages()))
                         .timestamp(turn.getTimestamp())
                         .build());
             }

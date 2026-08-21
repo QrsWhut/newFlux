@@ -58,6 +58,7 @@ public class WebClientAgentLlmClient implements AgentLlmClient {
         if (tools != null && !tools.isEmpty()) {
             payload.put("tools", JSON.parseArray(JSON.toJSONString(tools)));
             payload.put("tool_choice", "auto");
+            payload.put("parallel_tool_calls", true);
         }
 
         ParameterizedTypeReference<ServerSentEvent<String>> typeReference = new ParameterizedTypeReference<>() {

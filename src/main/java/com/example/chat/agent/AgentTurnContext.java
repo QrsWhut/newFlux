@@ -27,6 +27,10 @@ public class AgentTurnContext {
     @Builder.Default
     private List<AgentMessage> messages = new ArrayList<>();
 
+    /** 当前用户轮次需要写入长期记忆的有序消息。 */
+    @Builder.Default
+    private List<AgentMessage> currentTurnMessages = new ArrayList<>();
+
     @Builder.Default
     private int stepCount = 0;
 

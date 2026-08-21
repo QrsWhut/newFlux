@@ -1,8 +1,11 @@
 package com.example.chat.agent.memory;
 
+import com.example.chat.agent.model.AgentMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -29,11 +32,14 @@ public class ConversationMemoryServiceTest {
         String sessionId = "s100";
 
         // 1. 追加第 1 轮
-        StepVerifier.create(memoryService.appendTurn(userId, sessionId, "问题1", "回答1")).verifyComplete();
+        StepVerifier.create(appendSimpleTurn(userId, sessionId, "问题1", "回答1"))
+                .verifyComplete();
         // 2. 追加第 2 轮
-        StepVerifier.create(memoryService.appendTurn(userId, sessionId, "问题2", "回答2")).verifyComplete();
+        StepVerifier.create(appendSimpleTurn(userId, sessionId, "问题2", "回答2"))
+                .verifyComplete();
         // 3. 追加第 3 轮
-        StepVerifier.create(memoryService.appendTurn(userId, sessionId, "问题3", "回答3")).verifyComplete();
+        StepVerifier.create(appendSimpleTurn(userId, sessionId, "问题3", "回答3"))
+                .verifyComplete();
 
         // 验证前 3 轮完整在窗口内，摘要为空
         StepVerifier.create(memoryService.getMemory(userId, sessionId))
@@ -46,7 +52,8 @@ public class ConversationMemoryServiceTest {
                 .verifyComplete();
 
         // 4. 追加第 4 轮
-        StepVerifier.create(memoryService.appendTurn(userId, sessionId, "问题4", "回答4")).verifyComplete();
+        StepVerifier.create(appendSimpleTurn(userId, sessionId, "问题4", "回答4"))
+                .verifyComplete();
 
         // 验证第 1 轮被压缩入摘要，窗口内只有第 2, 3, 4 轮
         StepVerifier.create(memoryService.getMemory(userId, sessionId))
@@ -62,15 +69,19 @@ public class ConversationMemoryServiceTest {
 
     @Test
     public void testUserSessionIsolation() {
-        StepVerifier.create(memoryService.appendTurn("u1", "s1", "A问", "A答")).verifyComplete();
-        StepVerifier.create(memoryService.appendTurn("u2", "s2", "B问", "B答")).verifyComplete();
+        StepVerifier.create(appendSimpleTurn("u1", "s1", "A问", "A答"))
+                .verifyComplete();
+        StepVerifier.create(appendSimpleTurn("u2", "s2", "B问", "B答"))
+                .verifyComplete();
 
         StepVerifier.create(memoryService.getMemory("u1", "s1"))
-                .expectNextMatches(mem -> mem.getRecentTurns().size() == 1 && "A问".equals(mem.getRecentTurns().get(0).getUserQuestion()))
+                .expectNextMatches(mem -> mem.getRecentTurns().size() == 1
+                        && "A问".equals(mem.getRecentTurns().get(0).getUserQuestion()))
                 .verifyComplete();
 
         StepVerifier.create(memoryService.getMemory("u2", "s2"))
-                .expectNextMatches(mem -> mem.getRecentTurns().size() == 1 && "B问".equals(mem.getRecentTurns().get(0).getUserQuestion()))
+                .expectNextMatches(mem -> mem.getRecentTurns().size() == 1
+                        && "B问".equals(mem.getRecentTurns().get(0).getUserQuestion()))
                 .verifyComplete();
     }
 
@@ -80,8 +91,15 @@ public class ConversationMemoryServiceTest {
                 .expectError(IllegalArgumentException.class)
                 .verify();
 
-        StepVerifier.create(memoryService.appendTurn("u1", null, "q", "a"))
+        StepVerifier.create(memoryService.appendTurn("u1", null, List.of(
+                        AgentMessage.user("q"), AgentMessage.assistant("a"))))
                 .expectError(IllegalArgumentException.class)
                 .verify();
+    }
+
+    private reactor.core.publisher.Mono<Void> appendSimpleTurn(
+            String userId, String sessionId, String question, String answer) {
+        return memoryService.appendTurn(userId, sessionId, List.of(
+                AgentMessage.user(question), AgentMessage.assistant(answer)));
     }
 }

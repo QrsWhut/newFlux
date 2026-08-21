@@ -1,8 +1,13 @@
 package com.example.chat.agent.client;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.example.chat.agent.model.AgentMessage;
 import com.example.chat.agent.model.AgentModelResponse;
 import com.example.chat.agent.model.AgentToolDefinition;
+import com.example.chat.agent.tool.AgentToolSchemaGenerator;
+import com.example.chat.agent.tool.DpuAgentTool;
+import com.example.chat.common.dto.agent.tool.QueryFinancialDataInput;
 import com.example.chat.common.exception.DownstreamException;
 import com.example.chat.config.DownstreamProperties;
 import okhttp3.mockwebserver.MockResponse;
@@ -69,11 +74,16 @@ public class WebClientAgentLlmClientTest {
                 ));
 
         List<AgentMessage> messages = List.of(AgentMessage.user("你好"));
-        Flux<AgentModelResponse> flux = agentLlmClient.chat(messages, Collections.emptyList(), "sess-test-1");
+        Flux<AgentModelResponse> flux = agentLlmClient.chat(
+                messages, Collections.emptyList(), "sess-test-1");
 
         StepVerifier.create(flux)
-                .expectNextMatches(res -> res.getType() == AgentModelResponse.ResponseType.FINAL_TEXT && "你好，".equals(res.getTextDelta()))
-                .expectNextMatches(res -> res.getType() == AgentModelResponse.ResponseType.FINAL_TEXT && "我是金融助手".equals(res.getTextDelta()))
+                .expectNextMatches(res -> res.getType()
+                        == AgentModelResponse.ResponseType.FINAL_TEXT
+                        && "你好，".equals(res.getTextDelta()))
+                .expectNextMatches(res -> res.getType()
+                        == AgentModelResponse.ResponseType.FINAL_TEXT
+                        && "我是金融助手".equals(res.getTextDelta()))
                 .verifyComplete();
 
         RecordedRequest req = mockWebServer.takeRequest(5, TimeUnit.SECONDS);
@@ -83,7 +93,7 @@ public class WebClientAgentLlmClientTest {
     }
 
     @Test
-    public void testStreamToolCall() {
+    public void testStreamToolCall() throws InterruptedException {
         mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody(
@@ -92,7 +102,10 @@ public class WebClientAgentLlmClientTest {
                 ));
 
         List<AgentMessage> messages = List.of(AgentMessage.user("查茅台"));
-        Flux<AgentModelResponse> flux = agentLlmClient.chat(messages, Collections.emptyList(), "sess-test-2");
+        AgentToolDefinition definition = new AgentToolSchemaGenerator()
+                .createDefinition(DpuAgentTool.class, QueryFinancialDataInput.class);
+        Flux<AgentModelResponse> flux = agentLlmClient.chat(
+                messages, List.of(definition), "sess-test-2");
 
         StepVerifier.create(flux)
                 .expectNextMatches(res -> {
@@ -104,6 +117,16 @@ public class WebClientAgentLlmClientTest {
                             && "{\"query\":\"茅台\"}".equals(tc.getFunction().getArguments());
                 })
                 .verifyComplete();
+
+        RecordedRequest request = mockWebServer.takeRequest(5, TimeUnit.SECONDS);
+        assertNotNull(request);
+        JSONObject requestBody = JSON.parseObject(request.getBody().readUtf8());
+        assertTrue(requestBody.getBooleanValue("parallel_tool_calls"));
+        JSONObject function = requestBody.getJSONArray("tools")
+                .getJSONObject(0).getJSONObject("function");
+        assertTrue(function.getBooleanValue("strict"));
+        assertFalse(function.getJSONObject("parameters")
+                .getBooleanValue("additionalProperties"));
     }
 
 
@@ -113,7 +136,8 @@ public class WebClientAgentLlmClientTest {
                 .setResponseCode(500)
                 .setBody("Internal Server Error"));
 
-        Flux<AgentModelResponse> flux = agentLlmClient.chat(List.of(AgentMessage.user("hi")), Collections.emptyList(), "sess-test-3");
+        Flux<AgentModelResponse> flux = agentLlmClient.chat(
+                List.of(AgentMessage.user("hi")), Collections.emptyList(), "sess-test-3");
 
         StepVerifier.create(flux)
                 .expectError(DownstreamException.class)

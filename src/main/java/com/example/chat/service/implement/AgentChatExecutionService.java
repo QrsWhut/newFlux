@@ -3,6 +3,7 @@ package com.example.chat.service.implement;
 import com.example.chat.agent.AgentLoop;
 import com.example.chat.agent.AgentTurnContext;
 import com.example.chat.agent.memory.ConversationMemoryService;
+import com.example.chat.agent.model.AgentMessage;
 import com.example.chat.agent.prompt.AgentPromptFactory;
 import com.example.chat.common.dto.ChatEvent;
 import com.example.chat.common.dto.ChatRequest;
@@ -16,6 +17,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.concurrent.CancellationException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -90,6 +93,8 @@ public class AgentChatExecutionService implements ChatExecutionService {
                 .request(request)
                 .memory(memory)
                 .messages(promptFactory.buildInitialMessages(request, memory))
+                .currentTurnMessages(new ArrayList<>(
+                        List.of(AgentMessage.user(request.question()))))
                 .build();
         log.info("开始执行 Agent 对话，taskId={}, sessionId={}",
                 request.taskId(), maskSessionId(request.sessionId()));
@@ -124,12 +129,9 @@ public class AgentChatExecutionService implements ChatExecutionService {
             ));
         }
 
-        return memoryService.appendTurn(
-                        request.userId(),
-                        request.sessionId(),
-                        request.question(),
-                        fullAnswer
-                )
+        context.getCurrentTurnMessages().add(AgentMessage.assistant(fullAnswer));
+        return memoryService.appendTurn(request.userId(), request.sessionId(),
+                        context.getCurrentTurnMessages())
                 .onErrorResume(ex -> {
                     log.error("Agent 对话记忆写入异常，taskId={}", request.taskId(), ex);
                     return Mono.empty();

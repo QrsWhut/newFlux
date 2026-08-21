@@ -1,11 +1,12 @@
 package com.example.chat.agent;
 
+import com.alibaba.fastjson.JSONObject;
 import com.example.chat.agent.client.AgentLlmClient;
 import com.example.chat.agent.model.AgentMessage;
 import com.example.chat.agent.model.AgentModelResponse;
 import com.example.chat.agent.model.AgentToolCall;
-import com.example.chat.agent.tool.AgentTool;
-import com.example.chat.agent.tool.AgentToolRegistry;
+import com.example.chat.agent.tool.AgentToolContext;
+import com.example.chat.agent.tool.AgentToolInvoker;
 import com.example.chat.agent.tool.AgentToolResult;
 import com.example.chat.common.dto.ChatEvent;
 import com.example.chat.config.AgentProperties;
@@ -16,7 +17,6 @@ import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -29,16 +29,23 @@ import java.util.concurrent.atomic.AtomicLong;
 @Component
 public class AgentLoop {
 
+    /** 工具成功状态。 */
+    private static final String TOOL_STATUS_SUCCESS = "SUCCESS";
+    /** 工具失败状态。 */
+    private static final String TOOL_STATUS_FAILED = "FAILED";
+    /** 工具跳过状态。 */
+    private static final String TOOL_STATUS_SKIPPED = "SKIPPED";
+
     private final AgentLlmClient agentLlmClient;
-    private final AgentToolRegistry toolRegistry;
+    private final AgentToolInvoker toolInvoker;
     private final AgentProperties agentProperties;
 
     public AgentLoop(
             AgentLlmClient agentLlmClient,
-            AgentToolRegistry toolRegistry,
+            AgentToolInvoker toolInvoker,
             AgentProperties agentProperties) {
         this.agentLlmClient = agentLlmClient;
-        this.toolRegistry = toolRegistry;
+        this.toolInvoker = toolInvoker;
         this.agentProperties = agentProperties;
     }
 
@@ -70,7 +77,7 @@ public class AgentLoop {
 
         return agentLlmClient.chat(
                         context.getMessages(),
-                        toolRegistry.getDefinitions(),
+                        toolInvoker.getAllowedDefinitions(createToolContext(context)),
                         context.getRequest().sessionId()
                 )
                 .flatMap(response -> toChatEvents(context, response, accumulatedToolCalls, sequence))
@@ -80,7 +87,10 @@ public class AgentLoop {
                     }
                     log.info("Agent 触发工具调用，step={}, toolCount={}, taskId={}",
                             context.getStepCount(), accumulatedToolCalls.size(), context.getRequest().taskId());
-                    context.getMessages().add(AgentMessage.assistantWithTools(accumulatedToolCalls));
+                    AgentMessage toolCallMessage = AgentMessage.assistantWithTools(
+                            List.copyOf(accumulatedToolCalls));
+                    context.getMessages().add(toolCallMessage);
+                    context.getCurrentTurnMessages().add(toolCallMessage);
                     return processToolCalls(context, accumulatedToolCalls, sequence)
                             .concatWith(Flux.defer(() -> executeStep(context, sequence)));
                 }));
@@ -118,73 +128,74 @@ public class AgentLoop {
             AgentTurnContext context,
             List<AgentToolCall> toolCalls,
             AtomicLong sequence) {
-        List<Flux<ChatEvent>> toolStreams = new ArrayList<>();
+        List<ToolCallTask> tasks = new ArrayList<>(toolCalls.size());
+        List<ChatEvent> statusEvents = new ArrayList<>(toolCalls.size());
         for (AgentToolCall toolCall : toolCalls) {
-            toolStreams.add(processSingleToolCall(context, toolCall, sequence));
+            ToolCallTask task = prepareToolCall(context, toolCall);
+            tasks.add(task);
+            String statusText = task.duplicate()
+                    ? "已跳过重复查询：" + task.toolName()
+                    : "正在查询 " + task.toolName();
+            statusEvents.add(ChatEvent.status(
+                    context.getRequest().taskId(), sequence.incrementAndGet(), statusText));
         }
-        return Flux.concat(toolStreams);
+        int concurrency = Math.min(agentProperties.maxParallelToolCalls(), tasks.size());
+        Flux<ChatEvent> executionEvents = Flux.fromIterable(tasks)
+                .flatMapSequential(task -> executeToolCall(context, task), concurrency, 1)
+                .concatMap(execution -> Flux.fromIterable(
+                        appendToolExecution(context, execution, sequence)));
+        return Flux.fromIterable(statusEvents).concatWith(executionEvents);
     }
 
-    private Flux<ChatEvent> processSingleToolCall(
-            AgentTurnContext context,
-            AgentToolCall toolCall,
-            AtomicLong sequence) {
+    private ToolCallTask prepareToolCall(AgentTurnContext context, AgentToolCall toolCall) {
         String toolCallId = toolCall.getId();
         String toolName = toolCall.getFunction() == null ? "" : toolCall.getFunction().getName();
         String argumentsJson = toolCall.getFunction() == null ? "{}" : toolCall.getFunction().getArguments();
-        Optional<AgentTool> toolOptional = toolRegistry.getTool(toolName);
-
-        if (toolOptional.isEmpty()) {
-            String observation = "错误：未知工具 " + toolName;
-            context.getMessages().add(AgentMessage.tool(toolCallId, toolName, observation));
-            return Flux.just(ChatEvent.status(
-                    context.getRequest().taskId(),
-                    sequence.incrementAndGet(),
-                    "尝试调用未知工具：" + toolName
-            ));
-        }
-
-        if (context.checkAndRecordToolCall(toolName, argumentsJson)) {
-            String observation = "已跳过重复的工具调用：" + toolName;
-            context.getMessages().add(AgentMessage.tool(toolCallId, toolName, observation));
-            return Flux.just(ChatEvent.status(
-                    context.getRequest().taskId(),
-                    sequence.incrementAndGet(),
-                    "已跳过重复查询：" + toolName
-            ));
-        }
-
-        AgentTool tool = toolOptional.get();
-        ChatEvent statusEvent = ChatEvent.status(
-                context.getRequest().taskId(),
-                sequence.incrementAndGet(),
-                "正在查询 " + toolName
-        );
-        Mono<List<ChatEvent>> execution = tool.execute(argumentsJson, context.getRequest().sessionId())
-                .timeout(agentProperties.singleCallTimeout())
-                .onErrorResume(ex -> Mono.just(AgentToolResult.failure(
-                        toolName, "工具调用超时或异常，请稍后重试")))
-                .map(result -> appendToolResult(context, toolCallId, toolName, result, sequence));
-
-        return Flux.just(statusEvent).concatWith(execution.flatMapMany(Flux::fromIterable));
+        boolean duplicate = context.checkAndRecordToolCall(toolName, argumentsJson);
+        return new ToolCallTask(toolCallId, toolName, argumentsJson, duplicate);
     }
 
-    private List<ChatEvent> appendToolResult(
+    private Mono<ToolExecution> executeToolCall(
+            AgentTurnContext context, ToolCallTask task) {
+        if (task.duplicate()) {
+            return Mono.just(new ToolExecution(
+                    task.toolCallId(),
+                    "已跳过重复的工具调用：" + task.toolName(),
+                    TOOL_STATUS_SKIPPED,
+                    null));
+        }
+        return toolInvoker.call(
+                        task.toolName(), task.argumentsJson(), createToolContext(context))
+                .map(result -> new ToolExecution(
+                        task.toolCallId(),
+                        result.toModelObservation(),
+                        result.isSuccess() ? TOOL_STATUS_SUCCESS : TOOL_STATUS_FAILED,
+                        result));
+    }
+
+    private List<ChatEvent> appendToolExecution(
             AgentTurnContext context,
-            String toolCallId,
-            String toolName,
-            AgentToolResult result,
+            ToolExecution execution,
             AtomicLong sequence) {
         List<ChatEvent> events = new ArrayList<>();
-        if (result.getUiNode() != null) {
-            events.add(ChatEvent.ui(context.getRequest().taskId(), sequence.incrementAndGet(), result.getUiNode()));
+        AgentToolResult result = execution.result();
+        if (result != null && result.getUiNode() != null) {
+            events.add(ChatEvent.ui(
+                    context.getRequest().taskId(),
+                    sequence.incrementAndGet(),
+                    result.getUiNode()));
         }
         context.getMessages().add(AgentMessage.tool(
-                toolCallId,
-                toolName,
-                truncateObservation(result.getObservation())
-        ));
+                execution.toolCallId(), truncateObservation(execution.observation())));
+        context.getCurrentTurnMessages().add(createToolStatusMessage(
+                execution.toolCallId(), execution.status()));
         return events;
+    }
+
+    private AgentMessage createToolStatusMessage(String toolCallId, String status) {
+        JSONObject statusResult = new JSONObject(true);
+        statusResult.put("status", status);
+        return AgentMessage.tool(toolCallId, statusResult.toJSONString());
     }
 
     private String truncateObservation(String observation) {
@@ -196,5 +207,30 @@ public class AgentLoop {
             return observation;
         }
         return observation.substring(0, maxChars) + "...【已截断】";
+    }
+
+    private AgentToolContext createToolContext(AgentTurnContext context) {
+        return AgentToolContext.builder()
+                .taskId(context.getRequest().taskId())
+                .sessionId(context.getRequest().sessionId())
+                .userId(context.getRequest().userId())
+                .attributes(context.getRequest().attributes())
+                .build();
+    }
+
+    /** 准备完成且尚未执行的工具调用。 */
+    private record ToolCallTask(
+            String toolCallId,
+            String toolName,
+            String argumentsJson,
+            boolean duplicate) {
+    }
+
+    /** 工具执行完成后等待按原始顺序归并的结果。 */
+    private record ToolExecution(
+            String toolCallId,
+            String observation,
+            String status,
+            AgentToolResult result) {
     }
 }

@@ -28,8 +28,13 @@ public class AgentToolDefinition {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class FunctionDefinition {
+        /** 工具名称。 */
         private String name;
+        /** 工具用途说明。 */
         private String description;
+        /** 工具参数 JSON Schema。 */
         private JSONObject parameters;
+        /** 是否启用严格参数 Schema。 */
+        private Boolean strict;
     }
 }

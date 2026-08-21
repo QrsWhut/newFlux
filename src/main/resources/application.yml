@@ -55,4 +55,8 @@ agent:
     total-timeout: 60s
     single-call-timeout: 10s
     observation-max-chars: 4000
-
+    max-parallel-tool-calls: 4
+    enabled-tools:
+      - searchFinancialDocuments
+      - queryFinancialData
+      - resolveFinancialEntity
