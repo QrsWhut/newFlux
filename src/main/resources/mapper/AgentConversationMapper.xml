@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.chat.dal.dao.AgentConversationMapper">
+
+    <sql id="conversationColumns">
+        id, user_id, session_id, status, context_status, latest_turn_no,
+        latest_summary_id, latest_summary_version, context_version, lock_version,
+        execution_owner, execution_epoch, execution_expire_time,
+        provider_code, route_id, api_protocol, model_name,
+        system_prompt_version, system_prompt_hash,
+        tool_definition_version, tool_schema_hash, create_time, update_time
+    </sql>
+
+    <select id="selectByUserAndSession"
+            resultType="com.example.chat.dal.model.AgentConversationDO">
+        SELECT <include refid="conversationColumns"/>
+        FROM agent_conversation
+        WHERE user_id = #{userId}
+          AND session_id = #{sessionId}
+    </select>
+
+    <select id="selectById" resultType="com.example.chat.dal.model.AgentConversationDO">
+        SELECT <include refid="conversationColumns"/>
+        FROM agent_conversation
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert" parameterType="com.example.chat.dal.model.AgentConversationDO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO agent_conversation (
+            user_id, session_id, status, context_status, latest_turn_no,
+            latest_summary_version, context_version, lock_version, execution_epoch,
+            provider_code, route_id, api_protocol, model_name,
+            system_prompt_version, system_prompt_hash,
+            tool_definition_version, tool_schema_hash
+        ) VALUES (
+            #{userId}, #{sessionId}, #{status}, #{contextStatus}, #{latestTurnNo},
+            #{latestSummaryVersion}, #{contextVersion}, #{lockVersion}, #{executionEpoch},
+            #{providerCode}, #{routeId}, #{apiProtocol}, #{modelName},
+            #{systemPromptVersion}, #{systemPromptHash},
+            #{toolDefinitionVersion}, #{toolSchemaHash}
+        )
+    </insert>
+
+    <update id="incrementLatestTurnNo">
+        UPDATE agent_conversation
+        SET latest_turn_no = latest_turn_no + 1,
+            lock_version = lock_version + 1
+        WHERE id = #{id}
+          AND lock_version = #{lockVersion}
+    </update>
+
+    <update id="acquireLease">
+        UPDATE agent_conversation
+        SET execution_owner = #{owner},
+            execution_epoch = execution_epoch + 1,
+            execution_expire_time = #{expireTime}
+        WHERE id = #{id}
+          AND (execution_owner IS NULL OR execution_expire_time &lt; #{currentTime})
+    </update>
+
+    <update id="renewLease">
+        UPDATE agent_conversation
+        SET execution_expire_time = #{expireTime}
+        WHERE id = #{id}
+          AND execution_owner = #{owner}
+          AND execution_epoch = #{executionEpoch}
+          AND execution_expire_time &gt;= #{currentTime}
+    </update>
+
+    <update id="releaseLease">
+        UPDATE agent_conversation
+        SET execution_owner = NULL,
+            execution_expire_time = NULL
+        WHERE id = #{id}
+          AND execution_owner = #{owner}
+          AND execution_epoch = #{executionEpoch}
+    </update>
+</mapper>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.chat.dal.dao.ModelCallRecordMapper">
+
+    <insert id="insert" parameterType="com.example.chat.dal.model.ModelCallRecordDO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO model_call_record (
+            conversation_id, turn_id, task_id, provider_request_id,
+            call_type, agent_step_no, attempt_no, status, apply_status,
+            provider_code, route_id, api_protocol, model_name,
+            estimated_input_tokens, input_tokens, output_tokens,
+            reasoning_tokens, cached_input_tokens, total_tokens,
+            context_window, max_output_tokens, history_end_turn_no,
+            compression_end_turn_no, is_anchor_reusable, summary_version,
+            context_version, context_fingerprint, system_prompt_version,
+            system_prompt_hash, tool_definition_version, tool_schema_hash,
+            compression_level, latency_millis, error_code, error_message
+        ) VALUES (
+            #{conversationId}, #{turnId}, #{taskId}, #{providerRequestId},
+            #{callType}, #{agentStepNo}, #{attemptNo}, #{status}, #{applyStatus},
+            #{providerCode}, #{routeId}, #{apiProtocol}, #{modelName},
+            #{estimatedInputTokens}, #{inputTokens}, #{outputTokens},
+            #{reasoningTokens}, #{cachedInputTokens}, #{totalTokens},
+            #{contextWindow}, #{maxOutputTokens}, #{historyEndTurnNo},
+            #{compressionEndTurnNo}, #{anchorReusable}, #{summaryVersion},
+            #{contextVersion}, #{contextFingerprint}, #{systemPromptVersion},
+            #{systemPromptHash}, #{toolDefinitionVersion}, #{toolSchemaHash},
+            #{compressionLevel}, #{latencyMillis}, #{errorCode}, #{errorMessage}
+        )
+    </insert>
+
+    <select id="selectByTurnId" resultType="com.example.chat.dal.model.ModelCallRecordDO">
+        SELECT id, conversation_id, turn_id, task_id, provider_request_id,
+               call_type, agent_step_no, attempt_no, status, apply_status,
+               provider_code, route_id, api_protocol, model_name,
+               estimated_input_tokens, input_tokens, output_tokens,
+               reasoning_tokens, cached_input_tokens, total_tokens,
+               context_window, max_output_tokens, history_end_turn_no,
+               compression_end_turn_no, is_anchor_reusable, summary_version,
+               context_version, context_fingerprint, system_prompt_version,
+               system_prompt_hash, tool_definition_version, tool_schema_hash,
+               compression_level, latency_millis, error_code, error_message,
+               create_time, update_time
+        FROM model_call_record
+        WHERE turn_id = #{turnId}
+        ORDER BY agent_step_no ASC, attempt_no ASC
+    </select>
+    <select id="selectById" resultType="com.example.chat.dal.model.ModelCallRecordDO">
+        SELECT id, conversation_id, turn_id, task_id, provider_request_id,
+               call_type, agent_step_no, attempt_no, status, apply_status,
+               provider_code, route_id, api_protocol, model_name,
+               estimated_input_tokens, input_tokens, output_tokens,
+               reasoning_tokens, cached_input_tokens, total_tokens,
+               context_window, max_output_tokens, history_end_turn_no,
+               compression_end_turn_no, is_anchor_reusable, summary_version,
+               context_version, context_fingerprint, system_prompt_version,
+               system_prompt_hash, tool_definition_version, tool_schema_hash,
+               compression_level, latency_millis, error_code, error_message,
+               create_time, update_time
+        FROM model_call_record
+        WHERE id = #{id}
+    </select>
+</mapper>

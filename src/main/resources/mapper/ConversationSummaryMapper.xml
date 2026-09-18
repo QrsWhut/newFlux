@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.chat.dal.dao.ConversationSummaryMapper">
+
+    <select id="selectById" resultType="com.example.chat.dal.model.ConversationSummaryDO">
+        SELECT id, conversation_id, summary_version, previous_summary_id,
+               covered_start_turn_no, covered_end_turn_no, summary_content,
+               summary_token_estimate, compression_level, model_call_id,
+               provider_code, route_id, api_protocol, model_name,
+               prompt_version, prompt_hash, status, create_time, update_time
+        FROM conversation_summary
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert" parameterType="com.example.chat.dal.model.ConversationSummaryDO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO conversation_summary (
+            conversation_id, summary_version, previous_summary_id,
+            covered_start_turn_no, covered_end_turn_no, summary_content,
+            summary_token_estimate, compression_level, model_call_id,
+            provider_code, route_id, api_protocol, model_name,
+            prompt_version, prompt_hash, status
+        ) VALUES (
+            #{conversationId}, #{summaryVersion}, #{previousSummaryId},
+            #{coveredStartTurnNo}, #{coveredEndTurnNo}, #{summaryContent},
+            #{summaryTokenEstimate}, #{compressionLevel}, #{modelCallId},
+            #{providerCode}, #{routeId}, #{apiProtocol}, #{modelName},
+            #{promptVersion}, #{promptHash}, #{status}
+        )
+    </insert>
+</mapper>
